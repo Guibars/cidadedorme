@@ -40,7 +40,7 @@ export function TvNightFall({ state, onAdvance }: TvNightFallProps) {
       </div>
 
       {/* Center 3D Walkable Mansion Map */}
-      <div className="relative z-10 my-2 w-full flex flex-col items-center">
+      <div className="relative z-10 my-2 w-full flex-1 min-h-0 flex flex-col items-center justify-center">
         {/* Timer Pill */}
         <div className="flex items-center gap-2 px-4 py-1 rounded-full bg-neutral-900/90 border border-neutral-800 mb-2 shadow-md">
           <span className="text-xs text-neutral-400 font-bold uppercase tracking-wider">

@@ -118,7 +118,7 @@ export default function App() {
         )}
 
         {publicState.phase === 'INTRO' && (
-          <div className="min-h-screen p-6 flex flex-col items-center justify-center text-center">
+          <div className="flex-1 min-h-screen p-6 flex flex-col items-center justify-center text-center">
             <h3 className="text-xl font-black uppercase text-amber-400 font-['Cinzel'] animate-pulse mb-2">
               DISTRIBUINDO IDENTIDADES...
             </h3>
@@ -220,7 +220,7 @@ export default function App() {
   // TV / NOTEBOOK (HOST) VIEW
   // ----------------------------------------------------
   return (
-    <div className="min-h-screen w-full bg-[#141414] text-neutral-100 flex flex-col relative overflow-hidden selection:bg-[#E50914] selection:text-white">
+    <div className="h-screen w-full bg-[#141414] text-neutral-100 flex flex-col relative overflow-hidden selection:bg-[#E50914] selection:text-white">
       {/* Presentation Bar (Netflix Black) */}
       <div className="w-full px-4 py-2 bg-black/80 border-b border-neutral-800 flex items-center justify-between text-xs z-50">
         <div className="flex items-center gap-2">
@@ -265,7 +265,7 @@ export default function App() {
           />
         ) : (
           <div className="flex-1 flex flex-col">
-            <TvHeader state={publicState} />
+            <TvHeader state={publicState} onRestart={restartGame} />
 
             {publicState.phase === 'LOBBY' && (
               <TvLobby

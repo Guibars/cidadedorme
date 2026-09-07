@@ -264,9 +264,9 @@ export function Mansion3DGridMap({
   };
 
   return (
-    <div ref={containerRef} className="w-full flex flex-col items-center select-none">
+    <div ref={containerRef} className="w-full h-full flex flex-col items-center justify-center select-none min-h-0">
       {/* 3D Isometric Viewport Container */}
-      <div className="relative w-full rounded-3xl overflow-hidden border-2 border-neutral-800 bg-[#09090d] shadow-[0_15px_50px_rgba(0,0,0,0.85)]">
+      <div className="relative w-full flex-1 min-h-0 max-h-[70vh] rounded-[2rem] overflow-hidden border-2 border-neutral-800 bg-[#09090d] shadow-[0_25px_65px_rgba(0,0,0,0.95)] flex items-center justify-center">
         {/* Canvas Render with High-DPI Resolution */}
         <canvas
           ref={canvasRef}
@@ -277,7 +277,7 @@ export function Mansion3DGridMap({
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerUp}
           style={{ touchAction: 'none' }}
-          className="w-full h-auto aspect-[16/10] cursor-crosshair block"
+          className="max-w-full max-h-full w-auto h-auto object-contain cursor-crosshair block drop-shadow-2xl"
         />
 
         {/* Night Ambient Darkness Overlay & Vignette */}
@@ -960,6 +960,59 @@ function drawAvatar3D(
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center';
   ctx.fillText(player.name, x, y - 19);
+
+  // 6. Speech Bubble
+  if (player.chatMessage && player.isAlive) {
+    ctx.font = 'bold 11px system-ui, sans-serif';
+    const padding = 8;
+    const maxWidth = 120;
+    
+    // Simple wrap text
+    const words = player.chatMessage.split(' ');
+    let lines = [];
+    let currentLine = words[0];
+    for (let i = 1; i < words.length; i++) {
+      const word = words[i];
+      const width = ctx.measureText(currentLine + ' ' + word).width;
+      if (width < maxWidth) {
+        currentLine += ' ' + word;
+      } else {
+        lines.push(currentLine);
+        currentLine = word;
+      }
+    }
+    lines.push(currentLine);
+
+    const bubbleWidth = Math.max(...lines.map(l => ctx.measureText(l).width)) + padding * 2;
+    const bubbleHeight = lines.length * 14 + padding * 2;
+    const bubbleX = x + 15;
+    const bubbleY = y - 45 - bubbleHeight;
+
+    // Draw speech bubble tail
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+    ctx.beginPath();
+    ctx.moveTo(x + 10, y - 30);
+    ctx.lineTo(x + 25, y - 40);
+    ctx.lineTo(x + 15, y - 45);
+    ctx.fill();
+
+    // Draw speech bubble body
+    ctx.beginPath();
+    roundRect(ctx, bubbleX, bubbleY, bubbleWidth, bubbleHeight, 8);
+    ctx.fill();
+    ctx.shadowColor = 'rgba(0,0,0,0.3)';
+    ctx.shadowBlur = 10;
+    ctx.shadowOffsetY = 4;
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+
+    ctx.fillStyle = '#111';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    lines.forEach((line, i) => {
+      ctx.fillText(line, bubbleX + padding, bubbleY + padding + i * 14);
+    });
+  }
 
   ctx.restore();
 }

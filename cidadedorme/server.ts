@@ -461,22 +461,7 @@ async function startServer() {
             if (clientRoomCode) {
               const room = gameManager.getRoom(clientRoomCode);
               if (room) {
-                room.phase = 'LOBBY';
-                room.round = 0;
-                room.clues = [];
-                room.winner = null;
-                room.eliminatedPlayer = null;
-                room.players.forEach((p) => {
-                  p.isAlive = true;
-                  p.hasRevealedRole = false;
-                  p.role = undefined;
-                  p.hasUsedAbility = false;
-                  p.hasConfirmedVote = false;
-                  p.currentAnswer = undefined;
-                  p.votedTargetId = undefined;
-                });
-                room.broadcastState();
-                room.broadcastPrivateUpdates();
+                room.restartGame();
               }
             }
             break;

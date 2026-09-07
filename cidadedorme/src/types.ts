@@ -54,6 +54,8 @@ export interface Player {
   answerTimestamp?: number;
   votedTargetId?: string;
   hasConfirmedVote: boolean;
+  chatMessage?: string;
+  chatTimestamp?: number;
   // Abilities
   hasUsedAbility: boolean;
   privateNotes: string[];
@@ -131,6 +133,8 @@ export interface PublicPlayer {
   y?: number;
   isMoving?: boolean;
   direction?: 'left' | 'right' | 'up' | 'down';
+  chatMessage?: string;
+  chatTimestamp?: number;
 }
 
 export interface PublicGameState {

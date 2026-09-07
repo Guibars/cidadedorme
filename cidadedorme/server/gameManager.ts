@@ -73,8 +73,85 @@ export class Room {
     timestamp: number;
   } | null = null;
 
+  private aiChatInterval: NodeJS.Timeout | null = null;
+
   constructor(code: string) {
     this.code = code;
+    this.addMysteriousAI();
+    this.startAIChatLoop();
+  }
+
+  private startAIChatLoop() {
+    this.aiChatInterval = setInterval(() => {
+      this.players.forEach((p) => {
+        if (p.isBot && p.isAlive && Math.random() < 0.15) { // 15% chance every 4 seconds
+          this.generateSmartAIChat(p);
+        }
+      });
+    }, 4000);
+  }
+
+  private generateSmartAIChat(bot: Player) {
+    let messages: string[] = [];
+
+    switch (this.phase) {
+      case 'LOBBY':
+        messages = [
+          'Estou sentindo um clima estranho hoje...',
+          'Quantos de vocês sabem manter um segredo?',
+          'Pronto para o jogo.',
+          'Espero que o Detetive seja bom...',
+          'Já podemos começar?',
+          'O relógio está correndo...'
+        ];
+        break;
+      case 'DISCUSSION':
+        messages = [
+          'Eu tenho quase certeza de que vi algo estranho.',
+          'Não olhem para mim, eu estava longe de confusão.',
+          'Alguém está mentindo...',
+          'Eu não confio nas respostas dessa última rodada.',
+          'Vocês estão acusando a pessoa errada.',
+          'Silêncio. Eu consigo ouvir alguém respirando alto...',
+          'Eu vi alguém saindo da cena do crime.',
+          'Cuidado com quem votam.',
+          'Não se deixem enganar tão fácil.'
+        ];
+        break;
+      case 'VOTING':
+        messages = [
+          'Já decidi meu voto.',
+          'Espero que eu não esteja cometendo um erro.',
+          'Adeus para quem for...',
+          'Meu voto já foi.'
+        ];
+        break;
+      default:
+        // No talking in other phases (like night or reading questions)
+        return;
+    }
+
+    if (messages.length > 0) {
+      const msg = messages[Math.floor(Math.random() * messages.length)];
+      bot.chatMessage = msg;
+      bot.chatTimestamp = Date.now();
+      this.broadcastState();
+
+      // Clear the message after a few seconds
+      setTimeout(() => {
+        if (bot.chatMessage === msg) {
+          bot.chatMessage = undefined;
+          this.broadcastState();
+        }
+      }, 5000 + Math.random() * 3000); // 5-8 seconds
+    }
+  }
+
+  public addMysteriousAI() {
+    // Add a specialized, always-present mysterious AI player
+    const aiId = `ai_phantom_${Date.now()}`;
+    const avatar = AVATARS.find((a) => a.id === 'avatar-wolf') || AVATARS[AVATARS.length - 1];
+    this.addPlayer(aiId, 'Fantasma (IA)', avatar.id, undefined, true);
   }
 
   public addPlayer(id: string, name: string, avatarId: string, socket?: WebSocket, isBot: boolean = false): Player {
@@ -152,9 +229,24 @@ export class Room {
     this.nightKillHappened = false;
 
     // Assign roles randomly: 1 ASSASSINO, 1 DETETIVE, others INOCENTE
-    const shuffled = [...playerList].sort(() => Math.random() - 0.5);
-    const killer = shuffled[0];
-    const detective = shuffled[1];
+    // Ensure the bot is NEVER the Detective
+    let humanPlayers = [...playerList].filter(p => !p.isBot);
+    
+    // If somehow there are no humans (e.g. only bots testing), fallback to all players
+    if (humanPlayers.length === 0) {
+      humanPlayers = [...playerList];
+    }
+    
+    // Shuffle the lists
+    const shuffledAll = [...playerList].sort(() => Math.random() - 0.5);
+    const shuffledHumans = [...humanPlayers].sort(() => Math.random() - 0.5);
+
+    // Pick Detective from humans ONLY
+    const detective = shuffledHumans[0];
+    
+    // Pick Killer from all players (excluding the chosen detective)
+    const possibleKillers = shuffledAll.filter(p => p.id !== detective.id);
+    const killer = possibleKillers[0];
 
     killer.role = 'ASSASSINO';
     this.killerPlayerId = killer.id;
@@ -162,9 +254,12 @@ export class Room {
     detective.role = 'DETETIVE';
     this.detectivePlayerId = detective.id;
 
-    for (let i = 2; i < shuffled.length; i++) {
-      shuffled[i].role = 'INOCENTE';
-    }
+    // Assign Innocent to everyone else
+    playerList.forEach(p => {
+      if (p.id !== killer.id && p.id !== detective.id) {
+        p.role = 'INOCENTE';
+      }
+    });
 
     // Distribute players across the mansion rooms with coordinates
     playerList.forEach((p, idx) => {
@@ -290,35 +385,55 @@ export class Room {
       this.players.forEach((p) => {
         if (!p.isBot || !p.isAlive) return;
 
-        // If bot is Killer, move towards nearest living player
+        // If bot is Killer, move towards nearest living player or run away
         if (p.role === 'ASSASSINO') {
-          const targets = this.getAlivePlayers().filter((t) => t.id !== p.id);
-          if (targets.length > 0) {
-            // Pick closest or first target
-            const target = targets[0];
-            const tx = target.x || 400;
-            const ty = target.y || 250;
-            const px = p.x || 400;
-            const py = p.y || 250;
+          if (this.nightKillHappened) {
+            // Run away rapidly to establish alibi
+            if (Math.random() < 0.8) {
+              const dx = (Math.random() - 0.5) * 150;
+              const dy = (Math.random() - 0.5) * 150;
+              this.movePlayer(p.id, (p.x || 400) + dx, (p.y || 250) + dy);
+            }
+          } else {
+            // Filter targets to try and avoid the Detective if possible, unless no one else is left
+            let targets = this.getAlivePlayers().filter((t) => t.id !== p.id && t.role !== 'DETETIVE');
+            if (targets.length === 0) {
+              targets = this.getAlivePlayers().filter((t) => t.id !== p.id);
+            }
 
-            const dist = Math.hypot(tx - px, ty - py);
-            if (dist <= 70) {
-              // Close enough to strike!
-              this.setNightKill(p.id, target.id, target.currentRoomId, tx, ty);
-            } else {
-              // Step towards victim
-              const angle = Math.atan2(ty - py, tx - px);
-              const speed = 25;
-              const nextX = px + Math.cos(angle) * speed;
-              const nextY = py + Math.sin(angle) * speed;
-              this.movePlayer(p.id, nextX, nextY);
+            if (targets.length > 0) {
+              // Pick closest target
+              const px = p.x || 400;
+              const py = p.y || 250;
+              targets.sort((a, b) => {
+                const distA = Math.hypot((a.x || 400) - px, (a.y || 250) - py);
+                const distB = Math.hypot((b.x || 400) - px, (b.y || 250) - py);
+                return distA - distB;
+              });
+
+              const target = targets[0];
+              const tx = target.x || 400;
+              const ty = target.y || 250;
+
+              const dist = Math.hypot(tx - px, ty - py);
+              if (dist <= 70) {
+                // Close enough to strike!
+                this.setNightKill(p.id, target.id, target.currentRoomId, tx, ty);
+              } else {
+                // Step towards victim
+                const angle = Math.atan2(ty - py, tx - px);
+                const speed = 35;
+                const nextX = px + Math.cos(angle) * speed;
+                const nextY = py + Math.sin(angle) * speed;
+                this.movePlayer(p.id, nextX, nextY);
+              }
             }
           }
         } else {
-          // Innocent bot: wander gently around mansion
-          if (Math.random() < 0.4) {
-            const dx = (Math.random() - 0.5) * 40;
-            const dy = (Math.random() - 0.5) * 40;
+          // Innocent / Detective bot: wander gently around mansion
+          if (Math.random() < 0.6) {
+            const dx = (Math.random() - 0.5) * 60;
+            const dy = (Math.random() - 0.5) * 60;
             this.movePlayer(p.id, (p.x || 400) + dx, (p.y || 250) + dy);
           }
         }
@@ -990,6 +1105,8 @@ export class Room {
       hasAnswered: p.currentAnswer !== undefined,
       hasVoted: p.hasConfirmedVote,
       eliminatedRole: !p.isAlive ? p.role : undefined,
+      chatMessage: p.chatMessage,
+      chatTimestamp: p.chatTimestamp,
     }));
 
     const killer = this.players.get(this.killerPlayerId || '');
@@ -1197,7 +1314,15 @@ export class Room {
     this.round = 0;
     this.clues = [];
     this.winner = null;
+    this.gameOverReason = null;
+    this.gameOverMessage = null;
     this.eliminatedPlayer = null;
+    this.nightClue = null;
+    this.forensicEvidence = null;
+    this.lastStabLocation = null;
+    this.nightKillHappened = false;
+    this.detectiveAccusation = null;
+
     this.players.forEach((p) => {
       p.isAlive = true;
       p.hasRevealedRole = false;
@@ -1206,6 +1331,10 @@ export class Room {
       p.hasConfirmedVote = false;
       p.currentAnswer = undefined;
       p.votedTargetId = undefined;
+      p.currentRoomId = 'living';
+      p.x = undefined;
+      p.y = undefined;
+      p.privateNotes = [];
     });
     this.broadcastState();
     this.broadcastPrivateUpdates();

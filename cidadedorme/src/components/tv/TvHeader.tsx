@@ -1,4 +1,4 @@
-import { Volume2, VolumeX } from 'lucide-react';
+import { Volume2, VolumeX, RotateCcw } from 'lucide-react';
 import { sound } from '../../utils/audio';
 import { useState } from 'react';
 import { PublicGameState } from '../../types';
@@ -9,9 +9,10 @@ interface TvHeaderProps {
   round?: number;
   maxRounds?: number;
   phaseLabel?: string;
+  onRestart?: () => void;
 }
 
-export function TvHeader({ state, roomCode, round, maxRounds, phaseLabel }: TvHeaderProps) {
+export function TvHeader({ state, roomCode, round, maxRounds, phaseLabel, onRestart }: TvHeaderProps) {
   const [audioEnabled, setAudioEnabled] = useState(sound.enabled);
 
   const activeRoomCode = state?.roomCode ?? roomCode ?? '';
@@ -89,6 +90,21 @@ export function TvHeader({ state, roomCode, round, maxRounds, phaseLabel }: TvHe
           <div className="px-3 py-1 rounded bg-[#1f1f1f] border border-neutral-700 text-neutral-200 text-xs font-mono font-bold tracking-widest">
             SALA: <span className="text-amber-400 font-black">{activeRoomCode}</span>
           </div>
+        )}
+
+        {onRestart && state && state.phase !== 'LOBBY' && state.phase !== 'INTRO' && (
+          <button
+            onClick={() => {
+              if (window.confirm('Tem certeza que deseja reiniciar o jogo? Todos os papéis e progressos serão perdidos.')) {
+                onRestart();
+              }
+            }}
+            className="px-3 py-1 rounded bg-rose-500/10 border border-rose-500/40 hover:bg-rose-500/30 text-rose-300 transition-colors cursor-pointer text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5"
+            title="Reiniciar a Partida"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Reiniciar</span>
+          </button>
         )}
 
         <button

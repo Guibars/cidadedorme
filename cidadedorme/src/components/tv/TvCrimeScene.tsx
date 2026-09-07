@@ -33,7 +33,7 @@ export function TvCrimeScene({ state, onAdvance }: TvCrimeSceneProps) {
         <span>PERÍCIA FORENSE EM ANDAMENTO ⚠</span>
       </div>
 
-      <div className="relative z-10 my-auto py-2 w-full flex flex-col items-center">
+      <div className="relative z-10 my-auto py-2 w-full flex-1 min-h-0 flex flex-col items-center justify-center">
         {victim ? (
           <div className="flex flex-col items-center animate-in zoom-in-95 duration-500 w-full">
             <div className="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-rose-950/60 border border-rose-600/50 text-rose-400 text-xs font-black uppercase tracking-[0.25em] mb-1">

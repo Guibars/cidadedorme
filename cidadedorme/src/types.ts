@@ -89,7 +89,23 @@ export interface Clue {
   id: string;
   round: number;
   text: string;
-  type: 'timing' | 'location' | 'behavior' | 'system';
+  type: 'timing' | 'location' | 'behavior' | 'system' | 'forensic';
+  details?: string;
+  evidenceCategory?: 'footprint' | 'blood' | 'object' | 'alibi' | 'thermal';
+}
+
+export interface ForensicEvidence {
+  crimeRoomId: MansionRoomId;
+  crimeRoomName: string;
+  victimName: string;
+  killerEscapeRoomId?: MansionRoomId;
+  killerEscapeRoomName?: string;
+  weaponTrace: string;
+  physicalEvidence: string;
+  escapeRouteClue: string;
+  acousticReport: string;
+  sensorAlert?: string;
+  trailPoints?: { x: number; y: number }[];
 }
 
 export interface SabotageAction {
@@ -170,6 +186,7 @@ export interface PublicGameState {
   nightCrimeRoomId?: MansionRoomId;
   nightCrimeRoomName?: string;
   nightClue?: string;
+  forensicEvidence?: ForensicEvidence;
   winner?: 'INVESTIGADORES' | 'ASSASSINO';
   killerPlayer?: {
     id: string;

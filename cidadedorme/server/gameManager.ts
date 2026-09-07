@@ -11,6 +11,7 @@ import {
   ClientMessage,
   ServerMessage,
   MansionRoomId,
+  ForensicEvidence,
 } from '../src/types';
 import { AVATARS, QUESTIONS_DATABASE, RANDOM_EVENTS_POOL, SABOTAGE_OPTIONS } from '../src/data/content';
 import {
@@ -51,6 +52,7 @@ export class Room {
   public nightCrimeRoomId: MansionRoomId | null = null;
   public nightCrimeRoomName: string | null = null;
   public nightClue: string = '';
+  public forensicEvidence: ForensicEvidence | null = null;
   public lastStabLocation: {
     x: number;
     y: number;
@@ -246,6 +248,7 @@ export class Room {
     this.nightVictim = null;
     this.nightCrimeRoomId = null;
     this.nightCrimeRoomName = null;
+    this.forensicEvidence = null;
     this.lastStabLocation = null;
 
     // Reset night choices and votes
@@ -396,30 +399,70 @@ export class Room {
           avatar: victim.avatar,
         };
 
-        const roomName = this.nightCrimeRoomName || 'Cozinha da Mansão';
-        const crimeRoom = getMansionRoom(this.nightCrimeRoomId || 'kitchen');
+        const crimeRoomId = this.nightCrimeRoomId || 'kitchen';
+        const crimeRoomName = this.nightCrimeRoomName || getMansionRoom(crimeRoomId).name;
+        const killerEscapeRoomId = killer?.currentRoomId || (crimeRoomId === 'kitchen' ? 'basement' : 'kitchen');
+        const killerEscapeRoomName = getMansionRoom(killerEscapeRoomId).name;
 
-        // Generate contextual night clue linking to the mansion room
-        const clueOptions = [
-          `Cena do Crime no(a) ${roomName}: O corpo de ${victim.name} foi encontrado com ferimentos de faca.`,
-          `Pista na cena (${roomName}): Uma faca suja e uma pegada apressada foram deixadas no chão.`,
-          killer
-            ? `Pista na cena: Testemunhas ouviram passos rápidos saindo do(a) ${roomName} rumo ao quarto de alguém com a inicial "${killer.name.charAt(0).toUpperCase()}".`
-            : `Pista na cena: Uma sombra misteriosa fugiu em silêncio pela porta lateral.`,
-          `Pista de álibi: Apenas quem estava em cômodos próximos ao(à) ${roomName} ouviu o barulho.`,
-        ];
+        // Realistic Physical Residues based on crime room & escape room
+        const roomPhysicalTraces: Record<string, string> = {
+          kitchen: 'Resíduos de corte rápido de talheres da bancada e água respingada perto da pia.',
+          living: 'Fuligem e cinzas da lareira apagada encontradas na maçaneta de saída da sala.',
+          bedroom: 'Fios de veludo escuro idênticos aos das cortinas foram rasgados na quina do móvel.',
+          library: 'Um livro antigo de couro caiu da estante e a porta de carvalho rangeu.',
+          basement: 'O quadro de disjuntores registrou queda de tensão no minuto exato do ataque.',
+          garden: 'Pegadas de lama úmida e folhas secas de carvalho foram deixadas na soleira da porta.',
+        };
 
-        this.nightClue = clueOptions[Math.floor(Math.random() * clueOptions.length)];
+        const physicalEvidence = roomPhysicalTraces[crimeRoomId] || 'Vestígios de lâmina afiada deixados no carpete.';
+        const weaponTrace = 'Faca de cozinha de prata com manchas frescas de sangue e cabo limpo às pressas.';
+        const escapeRouteClue = `Rastro de pegadas de sangue fresco saindo da(o) ${crimeRoomName} em direção à(ao) ${killerEscapeRoomName}!`;
+        const acousticReport = `Quem estava em cômodos adjacentes ouviu passos apressados logo após as 03h14.`;
+
+        // Calculate blood trail points from crime location to escape room center
+        const crimeCenter = this.lastStabLocation
+          ? { x: this.lastStabLocation.x, y: this.lastStabLocation.y }
+          : getRoomCenter(crimeRoomId);
+        const escapeCenter = getRoomCenter(killerEscapeRoomId);
+
+        const trailPoints: { x: number; y: number }[] = [];
+        const steps = 5;
+        for (let i = 1; i <= steps; i++) {
+          const ratio = i / (steps + 1);
+          trailPoints.push({
+            x: Math.round(crimeCenter.x + (escapeCenter.x - crimeCenter.x) * ratio + (Math.random() * 16 - 8)),
+            y: Math.round(crimeCenter.y + (escapeCenter.y - crimeCenter.y) * ratio + (Math.random() * 16 - 8)),
+          });
+        }
+
+        this.forensicEvidence = {
+          crimeRoomId,
+          crimeRoomName,
+          victimName: victim.name,
+          killerEscapeRoomId,
+          killerEscapeRoomName,
+          weaponTrace,
+          physicalEvidence,
+          escapeRouteClue,
+          acousticReport,
+          trailPoints,
+        };
+
+        this.nightClue = `🔍 PERÍCIA FORENSE: O corpo de ${victim.name} foi encontrado na(o) ${crimeRoomName}. Rastro de pegadas indica fuga em direção à(ao) ${killerEscapeRoomName}!`;
+
         this.clues.push({
           id: `night-clue-${Date.now()}`,
           round: this.round,
-          type: 'location',
+          type: 'forensic',
           text: this.nightClue,
+          details: `${physicalEvidence} • ${escapeRouteClue}`,
+          evidenceCategory: 'blood',
         });
       }
     } else {
       this.nightVictim = null;
-      this.nightClue = 'Ninguém foi morto nesta noite... A cidade dormiu em paz!';
+      this.forensicEvidence = null;
+      this.nightClue = 'Nenhum ataque foi consumado nesta noite... Todos os cômodos amanheceram seguros!';
     }
 
     this.broadcastState();
@@ -950,6 +993,7 @@ export class Room {
       nightCrimeRoomId: this.nightCrimeRoomId || undefined,
       nightCrimeRoomName: this.nightCrimeRoomName || undefined,
       nightClue: this.nightClue || undefined,
+      forensicEvidence: this.forensicEvidence || undefined,
       winner: this.winner || undefined,
       killerPlayer:
         this.phase === 'GAME_OVER' && killer

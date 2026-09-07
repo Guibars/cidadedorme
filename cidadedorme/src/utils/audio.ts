@@ -231,6 +231,30 @@ class SoundEngine {
     osc2.stop(now + 0.35);
   }
 
+  // Subtle Footsteps sound on wooden mansion floor
+  public playFootsteps() {
+    if (!this.enabled) return;
+    this.initCtx();
+    if (!this.ctx) return;
+
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(90 + Math.random() * 30, now);
+    osc.frequency.exponentialRampToValueAtTime(35, now + 0.07);
+
+    gain.gain.setValueAtTime(0.12, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.08);
+  }
+
   // Countdown beep for final 10 seconds (urgency)
   public playCountdownBeep(second: number) {
     if (!this.enabled) return;

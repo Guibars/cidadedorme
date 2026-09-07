@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import { PublicGameState } from '../../types';
-import { Users, QrCode, Play, UserPlus, AlertCircle, Trash2, Copy, Check, Wifi, Sparkles } from 'lucide-react';
+import { Users, QrCode, Play, UserPlus, AlertCircle, Trash2, Copy, Check, Wifi, Sparkles, BookOpen } from 'lucide-react';
 import { sound } from '../../utils/audio';
+import { Avatar3D } from '../common/Avatar3D';
+import { GameRulesModal } from '../common/GameRulesModal';
 
 interface TvLobbyProps {
   state: PublicGameState;
@@ -17,6 +19,7 @@ export function TvLobby({ state, onStartGame, onAddBot, onRemovePlayer }: TvLobb
   const [copied, setCopied] = useState(false);
   const [urlMode, setUrlMode] = useState<'direct' | 'preview'>('direct');
   const [showHostHelp, setShowHostHelp] = useState(false);
+  const [showRulesModal, setShowRulesModal] = useState(false);
 
   useEffect(() => {
     let origin = window.location.origin;
@@ -210,21 +213,17 @@ export function TvLobby({ state, onStartGame, onAddBot, onRemovePlayer }: TvLobb
                   return (
                     <div
                       key={player.id}
-                      className="p-3.5 rounded-lg bg-[#222222] border border-neutral-700 hover:border-neutral-500 flex items-center justify-between group transition-all duration-200 shadow-md animate-in fade-in"
+                      className="p-3.5 rounded-2xl bg-[#222222] border border-neutral-700 hover:border-neutral-500 flex items-center justify-between group transition-all duration-200 shadow-md animate-in fade-in"
                     >
                       <div className="flex items-center gap-3">
-                        {/* Netflix Square Profile Avatar */}
-                        <div
-                          className={`w-11 h-11 rounded-lg flex items-center justify-center text-2xl shadow bg-gradient-to-br ${player.avatar.bgGradient} border border-white/20`}
-                        >
-                          {player.avatar.emoji}
-                        </div>
+                        {/* 3D Profile Avatar */}
+                        <Avatar3D avatar={player.avatar} size="sm" animated={true} />
                         <div>
                           <div className="flex items-center gap-1.5">
                             <h4 className="text-sm font-bold text-white tracking-wide truncate max-w-[130px]">
                               {player.name}
                             </h4>
-                            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
                           </div>
                           <span className="text-[11px] text-neutral-400 font-normal">
                             {player.isBot ? 'Jogador Virtual' : 'Conectado'}
@@ -233,7 +232,7 @@ export function TvLobby({ state, onStartGame, onAddBot, onRemovePlayer }: TvLobb
                       </div>
 
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] font-black px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                        <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                           PRONTO
                         </span>
                         {onRemovePlayer && (
@@ -269,21 +268,35 @@ export function TvLobby({ state, onStartGame, onAddBot, onRemovePlayer }: TvLobb
 
           {/* Bottom Actions */}
           <div className="pt-3 border-t border-neutral-800 flex flex-wrap items-center justify-between gap-3">
-            <button
-              id="btn-add-test-bot"
-              onClick={handleAddBotClick}
-              disabled={playerCount >= 5}
-              className="px-4 py-3 rounded-md bg-[#2a2a2a] hover:bg-[#333333] text-neutral-200 hover:text-white border border-neutral-700 text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <UserPlus className="w-4 h-4 text-amber-400" />
-              <span>Adicionar Jogador de Teste (Bot)</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                id="btn-add-test-bot"
+                onClick={handleAddBotClick}
+                disabled={playerCount >= 5}
+                className="px-4 py-3 rounded-xl bg-[#2a2a2a] hover:bg-[#333333] text-neutral-200 hover:text-white border border-neutral-700 text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <UserPlus className="w-4 h-4 text-amber-400" />
+                <span>Adicionar Bot</span>
+              </button>
+
+              <button
+                id="btn-tv-rules-modal"
+                onClick={() => {
+                  sound.playClick();
+                  setShowRulesModal(true);
+                }}
+                className="px-4 py-3 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-neutral-200 hover:text-white border border-neutral-700 text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer"
+              >
+                <BookOpen className="w-4 h-4 text-amber-400" />
+                <span>Como Jogar & Regras</span>
+              </button>
+            </div>
 
             <button
               id="btn-start-game"
               onClick={handleStart}
               disabled={!canStart}
-              className={`px-8 py-3.5 rounded-md font-black tracking-wider uppercase text-base flex items-center gap-2.5 transition-all duration-200 shadow-xl ${
+              className={`px-8 py-3.5 rounded-xl font-black tracking-wider uppercase text-base flex items-center gap-2.5 transition-all duration-200 shadow-xl ${
                 canStart
                   ? 'bg-[#E50914] hover:bg-[#B81D24] active:scale-[0.98] text-white shadow-[0_0_25px_rgba(229,9,20,0.5)] cursor-pointer'
                   : 'bg-neutral-800 text-neutral-500 border border-neutral-700 cursor-not-allowed'
@@ -310,10 +323,13 @@ export function TvLobby({ state, onStartGame, onAddBot, onRemovePlayer }: TvLobb
           <span>Otimizado para Wi-Fi de 3 Mbps</span>
         </span>
         <span>•</span>
-        <span>1 Assassino • 1 Detetive • Inocentes</span>
+        <span>1 Assassino • Todos Investigam & Votam</span>
         <span>•</span>
         <span>100% no Navegador • Sem Aplicativo</span>
       </div>
+
+      {/* Rules Modal */}
+      <GameRulesModal isOpen={showRulesModal} onClose={() => setShowRulesModal(false)} />
 
       {/* Deployment & iPhone Help Modal */}
       {showHostHelp && (

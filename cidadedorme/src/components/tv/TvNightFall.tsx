@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
 import { PublicGameState } from '../../types';
-import { EyeOff, FastForward, Skull, Compass } from 'lucide-react';
+import { EyeOff, FastForward, Skull } from 'lucide-react';
 import { sound } from '../../utils/audio';
-import { InteractiveMansionMap } from '../common/InteractiveMansionMap';
+import { Mansion3DGridMap } from '../common/Mansion3DGridMap';
 
 interface TvNightFallProps {
   state: PublicGameState;
@@ -32,15 +32,15 @@ export function TvNightFall({ state, onAdvance }: TvNightFallProps) {
           MADRUGADA SANGRENTA
         </h1>
 
-        <p className="text-sm md:text-lg text-neutral-300 font-medium max-w-2xl mx-auto mt-1">
+        <p className="text-sm md:text-base text-neutral-300 font-medium max-w-2xl mx-auto mt-1">
           Todos os jogadores fecham os olhos e abaixam a cabeça.
           <br />
-          <span className="text-rose-400 font-bold">O Assassino caminha pela mansão com a faca</span> e deve se aproximar de sua vítima.
+          <span className="text-rose-400 font-bold">O Assassino caminha pela mansão em 3D</span> com a lanterna e deve se aproximar fisicamente de sua vítima para atacar!
         </p>
       </div>
 
-      {/* Center 2D Walkable Mansion Map */}
-      <div className="relative z-10 my-3 w-full flex flex-col items-center">
+      {/* Center 3D Walkable Mansion Map */}
+      <div className="relative z-10 my-2 w-full flex flex-col items-center">
         {/* Timer Pill */}
         <div className="flex items-center gap-2 px-4 py-1 rounded-full bg-neutral-900/90 border border-neutral-800 mb-2 shadow-md">
           <span className="text-xs text-neutral-400 font-bold uppercase tracking-wider">
@@ -52,14 +52,15 @@ export function TvNightFall({ state, onAdvance }: TvNightFallProps) {
           <div className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping ml-1" />
         </div>
 
-        {/* Live Interactive 2D Map */}
+        {/* Live 3D Room Grid */}
         <div className="w-full max-w-4xl bg-black/70 p-3 rounded-3xl border border-neutral-800/80 shadow-2xl backdrop-blur-sm">
-          <InteractiveMansionMap
+          <Mansion3DGridMap
             players={state.players}
             isKiller={false}
             isNight={true}
             canMove={false}
             lastStabLocation={state.lastStabLocation}
+            showControls={false}
           />
         </div>
       </div>
@@ -74,7 +75,7 @@ export function TvNightFall({ state, onAdvance }: TvNightFallProps) {
         {onAdvance && (
           <button
             onClick={onAdvance}
-            className="px-3 py-1.5 rounded-lg bg-neutral-800/90 hover:bg-neutral-700 text-neutral-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="px-3 py-1.5 rounded-xl bg-neutral-800/90 hover:bg-neutral-700 text-neutral-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             <FastForward className="w-3.5 h-3.5 text-amber-400" />
             <span>Pular Turno Noturno</span>

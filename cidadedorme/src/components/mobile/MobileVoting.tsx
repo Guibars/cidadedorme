@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Player, PublicGameState } from '../../types';
 import { Vote, Check, ShieldCheck, X } from 'lucide-react';
 import { sound } from '../../utils/audio';
+import { Avatar3D } from '../common/Avatar3D';
 
 interface MobileVotingProps {
   player: Player;
@@ -84,11 +85,12 @@ export function MobileVoting({
               } ${isConfirmed && !isSelected ? 'opacity-40 cursor-not-allowed' : ''}`}
             >
               <div className="flex items-center gap-3.5">
-                <div
-                  className={`w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shadow-inner bg-gradient-to-br ${target.avatar.bgGradient} border border-white/10`}
-                >
-                  {target.avatar.emoji}
-                </div>
+                <Avatar3D
+                  avatar={target.avatar}
+                  size="sm"
+                  showGlow={isSelected}
+                  animated={isSelected}
+                />
                 <div className="text-left">
                   <h3 className="text-base font-bold text-neutral-100 tracking-wide">
                     {target.name}
@@ -138,8 +140,8 @@ export function MobileVoting({
       {showConfirmModal && selectedPlayer && (
         <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-5">
           <div className="w-full max-w-sm rounded-3xl bg-neutral-900 border-2 border-rose-500/60 p-6 text-center shadow-2xl animate-in zoom-in-95">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center text-3xl shadow-inner bg-gradient-to-br from-rose-600 to-neutral-900">
-              {selectedPlayer.avatar.emoji}
+            <div className="flex justify-center mb-3">
+              <Avatar3D avatar={selectedPlayer.avatar} size="lg" animated={true} showGlow={true} />
             </div>
 
             <h3 className="text-xl font-black uppercase font-['Cinzel'] tracking-wider text-neutral-100 mb-2">

@@ -228,25 +228,44 @@ export class Room {
     this.detectiveAccusation = null;
     this.nightKillHappened = false;
 
-    // Assign roles randomly: 1 ASSASSINO, 1 DETETIVE, others INOCENTE
-    // Ensure the bot is NEVER the Detective
-    let humanPlayers = [...playerList].filter(p => !p.isBot);
-    
-    // If somehow there are no humans (e.g. only bots testing), fallback to all players
-    if (humanPlayers.length === 0) {
-      humanPlayers = [...playerList];
-    }
-    
-    // Shuffle the lists
-    const shuffledAll = [...playerList].sort(() => Math.random() - 0.5);
-    const shuffledHumans = [...humanPlayers].sort(() => Math.random() - 0.5);
+    // Assign roles: 1 ASSASSINO, 1 DETETIVE, others INOCENTE
+    // Rules:
+    // 1. Bot is NEVER Detective ("Ele não pode um detetive")
+    // 2. Any player (human or bot) can be Killer with equal fair probability!
+    // 3. Detective is chosen from eligible humans.
+    const shuffle = <T>(array: T[]): T[] => {
+      const arr = [...array];
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    };
 
-    // Pick Detective from humans ONLY
-    const detective = shuffledHumans[0];
-    
-    // Pick Killer from all players (excluding the chosen detective)
-    const possibleKillers = shuffledAll.filter(p => p.id !== detective.id);
-    const killer = possibleKillers[0];
+    const humanPlayers = playerList.filter((p) => !p.isBot);
+
+    let killer: Player;
+    let detective: Player;
+
+    if (humanPlayers.length >= 2) {
+      // Pick killer completely randomly from ALL players (human or bot)
+      const shuffledAll = shuffle(playerList);
+      killer = shuffledAll[0];
+
+      // Detective must be a human who is not the killer
+      const eligibleDetectives = shuffle(humanPlayers.filter((p) => p.id !== killer.id));
+      detective = eligibleDetectives[0];
+    } else if (humanPlayers.length === 1) {
+      // 1 human with bots: Human is Detective so they can vote; a bot is randomly picked as Killer
+      detective = humanPlayers[0];
+      const botKillers = shuffle(playerList.filter((p) => p.id !== detective.id));
+      killer = botKillers[0];
+    } else {
+      // Fallback for bot testing
+      const shuffled = shuffle(playerList);
+      detective = shuffled[0];
+      killer = shuffled[1];
+    }
 
     killer.role = 'ASSASSINO';
     this.killerPlayerId = killer.id;
@@ -255,7 +274,7 @@ export class Room {
     this.detectivePlayerId = detective.id;
 
     // Assign Innocent to everyone else
-    playerList.forEach(p => {
+    playerList.forEach((p) => {
       if (p.id !== killer.id && p.id !== detective.id) {
         p.role = 'INOCENTE';
       }
@@ -356,14 +375,15 @@ export class Room {
     if (this.timerInterval) clearInterval(this.timerInterval);
     this.phase = 'NIGHT_KILLER';
     // 35 seconds for the killer to walk close and strike with the knife
-    this.timerSeconds = 35;
-    this.timerMax = 35;
+    this.timerSeconds = 20;
+    this.timerMax = 20;
     this.nightVictimId = null;
     this.nightVictim = null;
     this.nightCrimeRoomId = null;
     this.nightCrimeRoomName = null;
     this.forensicEvidence = null;
     this.lastStabLocation = null;
+    this.nightKillHappened = false; // FIX: Reset so AI can kill again!
 
     // Reset night choices and votes
     this.players.forEach((p) => {
@@ -420,12 +440,12 @@ export class Room {
                 // Close enough to strike!
                 this.setNightKill(p.id, target.id, target.currentRoomId, tx, ty);
               } else {
-                // Step towards victim
-                const angle = Math.atan2(ty - py, tx - px);
-                const speed = 35;
-                const nextX = px + Math.cos(angle) * speed;
-                const nextY = py + Math.sin(angle) * speed;
-                this.movePlayer(p.id, nextX, nextY);
+            // Step towards victim
+            const angle = Math.atan2(ty - py, tx - px);
+            const speed = 40;
+            const nextX = px + Math.cos(angle) * speed;
+            const nextY = py + Math.sin(angle) * speed;
+            this.movePlayer(p.id, nextX, nextY);
               }
             }
           }
@@ -440,8 +460,8 @@ export class Room {
       });
     }, 1200);
 
-    // 35-second timer for killer turn -> then transitions directly to daybreak
-    this.startTimer(35, () => {
+    // 20-second timer for killer turn -> then transitions directly to daybreak
+    this.startTimer(20, () => {
       clearInterval(botMoveInterval);
       this.startDayBreak();
     });
@@ -500,10 +520,9 @@ export class Room {
     this.broadcastAudio('playKnifeSlash');
 
     // TEMPO DE FUGA DO ASSASSINO:
-    // O assassino precisa de tempo para correr e fugir para outro cômodo!
-    // Garante pelo menos 14 segundos para fugir e forjar álibi
-    if (this.timerSeconds < 14) {
-      this.timerSeconds = 14;
+    // Garante pelo menos 6 segundos para fugir e forjar álibi
+    if (this.timerSeconds < 6) {
+      this.timerSeconds = 6;
     }
 
     this.broadcastState();
@@ -553,36 +572,14 @@ export class Room {
         const killerEscapeRoomId = killer?.currentRoomId || (crimeRoomId === 'kitchen' ? 'basement' : 'kitchen');
         const killerEscapeRoomName = getMansionRoom(killerEscapeRoomId).name;
 
-        // Realistic Physical Residues based on crime room & escape room
-        const roomPhysicalTraces: Record<string, string> = {
-          kitchen: 'Resíduos de corte rápido de talheres da bancada e água respingada perto da pia.',
-          living: 'Fuligem e cinzas da lareira apagada encontradas na maçaneta de saída da sala.',
-          bedroom: 'Fios de veludo escuro idênticos aos das cortinas foram rasgados na quina do móvel.',
-          library: 'Um livro antigo de couro caiu da estante e a porta de carvalho rangeu.',
-          basement: 'O quadro de disjuntores registrou queda de tensão no minuto exato do ataque.',
-          garden: 'Pegadas de lama úmida e folhas secas de carvalho foram deixadas na soleira da porta.',
-        };
+        // Remove obvious clues as requested by user
+        const physicalEvidence = 'Apenas uma leve desordem no ambiente, sem rastros claros.';
+        const weaponTrace = 'A arma do crime foi levada, não há impressões digitais.';
+        const escapeRouteClue = 'Não há rastros de pegadas. O local do crime foi limpo.';
+        const acousticReport = 'O silêncio reinou na mansão. Nada foi ouvido.';
 
-        const physicalEvidence = roomPhysicalTraces[crimeRoomId] || 'Vestígios de lâmina afiada deixados no carpete.';
-        const weaponTrace = 'Faca de cozinha de prata com manchas frescas de sangue e cabo limpo às pressas.';
-        const escapeRouteClue = `Rastro de pegadas de sangue fresco saindo da(o) ${crimeRoomName} em direção à(ao) ${killerEscapeRoomName}!`;
-        const acousticReport = `Quem estava em cômodos adjacentes ouviu passos apressados logo após as 03h14.`;
-
-        // Calculate blood trail points from crime location to escape room center
-        const crimeCenter = this.lastStabLocation
-          ? { x: this.lastStabLocation.x, y: this.lastStabLocation.y }
-          : getRoomCenter(crimeRoomId);
-        const escapeCenter = getRoomCenter(killerEscapeRoomId);
-
+        // Calculate blood trail points from crime location to escape room center (Empty to remove obvious blood)
         const trailPoints: { x: number; y: number }[] = [];
-        const steps = 5;
-        for (let i = 1; i <= steps; i++) {
-          const ratio = i / (steps + 1);
-          trailPoints.push({
-            x: Math.round(crimeCenter.x + (escapeCenter.x - crimeCenter.x) * ratio + (Math.random() * 16 - 8)),
-            y: Math.round(crimeCenter.y + (escapeCenter.y - crimeCenter.y) * ratio + (Math.random() * 16 - 8)),
-          });
-        }
 
         this.forensicEvidence = {
           crimeRoomId,
@@ -597,7 +594,7 @@ export class Room {
           trailPoints,
         };
 
-        this.nightClue = `🔍 PERÍCIA FORENSE: O corpo de ${victim.name} foi encontrado na(o) ${crimeRoomName}. Rastro de pegadas indica fuga em direção à(ao) ${killerEscapeRoomName}!`;
+        this.nightClue = `🔍 PERÍCIA: O corpo de ${victim.name} foi encontrado na(o) ${crimeRoomName}. O assassino agiu rápido e de forma furtiva.`;
 
         this.clues.push({
           id: `night-clue-${Date.now()}`,
@@ -783,12 +780,12 @@ export class Room {
       });
     }
 
-    // Clue 3: Avatar trait
+    // Clue 3: Behavioral trait
     clueTemplates.push({
       id: `clue-${Date.now()}-3`,
       round: this.round,
-      type: 'system',
-      text: `O codinome do assassino contém a letra "${killer.name.charAt(0).toUpperCase()}".`,
+      type: 'behavior',
+      text: `O assassino tem agido de forma excessivamente cuidadosa para despistar suspeitas.`,
     });
 
     const chosenClue = clueTemplates[Math.floor(Math.random() * clueTemplates.length)];
@@ -800,9 +797,9 @@ export class Room {
   public startVotingPhase() {
     if (this.timerInterval) clearInterval(this.timerInterval);
     this.phase = 'VOTING';
-    // 55 seconds so players have ample time to discuss and confirm their votes
-    this.timerSeconds = 55;
-    this.timerMax = 55;
+    // Only 35 seconds for the detective to make the final choice
+    this.timerSeconds = 35;
+    this.timerMax = 35;
     this.activeVotesCount = 0;
 
     this.players.forEach((p) => {
@@ -813,45 +810,45 @@ export class Room {
     this.broadcastState();
     this.broadcastPrivateUpdates();
 
-    this.startTimer(55, () => {
+    this.startTimer(35, () => {
       this.tallyVotesAndReveal();
     });
 
-    // Simulate bot votes
-    this.players.forEach((p) => {
-      if (p.isBot && p.isAlive) {
-        const delay = 4000 + Math.random() * 12000;
-        setTimeout(() => {
-          if (this.phase === 'VOTING' && !p.hasConfirmedVote) {
-            const aliveTargets = this.getAlivePlayers().filter((target) => target.id !== p.id);
-            if (aliveTargets.length > 0) {
-              const chosen = aliveTargets[Math.floor(Math.random() * aliveTargets.length)];
-              this.submitVote(p.id, chosen.id, true);
-            }
+    // Simulate bot detective vote
+    const detective = this.players.get(this.detectivePlayerId || '');
+    if (detective && detective.isBot && detective.isAlive) {
+      const delay = 4000 + Math.random() * 8000;
+      setTimeout(() => {
+        if (this.phase === 'VOTING' && !detective.hasConfirmedVote) {
+          const aliveTargets = this.getAlivePlayers().filter((target) => target.id !== detective.id);
+          if (aliveTargets.length > 0) {
+            const chosen = aliveTargets[Math.floor(Math.random() * aliveTargets.length)];
+            this.submitVote(detective.id, chosen.id, true);
           }
-        }, delay);
-      }
-    });
+        }
+      }, delay);
+    }
   }
 
   public submitVote(voterId: string, targetId: string, confirmImmediately: boolean = false) {
     const voter = this.players.get(voterId);
     if (!voter || !voter.isAlive || this.phase !== 'VOTING') return;
+    
+    // ONLY DETECTIVE CAN VOTE
+    if (voter.role !== 'DETETIVE') return;
 
     voter.votedTargetId = targetId;
     if (confirmImmediately) {
       voter.hasConfirmedVote = true;
     }
 
-    const confirmedCount = this.getAlivePlayers().filter((p) => p.hasConfirmedVote).length;
-    this.activeVotesCount = confirmedCount;
+    this.activeVotesCount = voter.hasConfirmedVote ? 1 : 0;
 
     this.broadcastState();
     this.sendPrivateUpdate(voterId);
 
-    // Check if everyone voted
-    const alivePlayers = this.getAlivePlayers();
-    if (alivePlayers.every((p) => p.hasConfirmedVote)) {
+    // Check if detective confirmed
+    if (voter.hasConfirmedVote) {
       if (this.timerInterval) clearInterval(this.timerInterval);
       setTimeout(() => {
         this.tallyVotesAndReveal();
@@ -862,19 +859,17 @@ export class Room {
   public confirmVote(voterId: string) {
     const voter = this.players.get(voterId);
     if (!voter || !voter.isAlive || this.phase !== 'VOTING') return;
+    if (voter.role !== 'DETETIVE') return;
 
     voter.hasConfirmedVote = true;
-    this.activeVotesCount = this.getAlivePlayers().filter((p) => p.hasConfirmedVote).length;
+    this.activeVotesCount = 1;
     this.broadcastState();
     this.sendPrivateUpdate(voterId);
 
-    const alivePlayers = this.getAlivePlayers();
-    if (alivePlayers.every((p) => p.hasConfirmedVote)) {
-      if (this.timerInterval) clearInterval(this.timerInterval);
-      setTimeout(() => {
-        this.tallyVotesAndReveal();
-      }, 1000);
-    }
+    if (this.timerInterval) clearInterval(this.timerInterval);
+    setTimeout(() => {
+      this.tallyVotesAndReveal();
+    }, 1000);
   }
 
   public tallyVotesAndReveal() {
@@ -1166,7 +1161,7 @@ export class Room {
         : undefined,
       answers,
       currentEvent: this.currentEvent || undefined,
-      clues: this.clues,
+      clues: [], // Clues are now private to the Detective
       activeVotesCount: this.activeVotesCount,
       voteRevealStep: this.voteRevealStep,
       revealedVotes: this.revealedVotes,
@@ -1245,6 +1240,7 @@ export class Room {
         player.role === 'ASSASSINO' &&
         (this.phase === 'DISCUSSION' || this.phase === 'NIGHT_KILLER' || this.phase === 'NIGHT_FALL'),
       availableSabotages: player.role === 'ASSASSINO' ? SABOTAGE_OPTIONS : undefined,
+      detectiveClues: player.role === 'DETETIVE' ? this.clues : undefined,
       ...overrides,
     };
   }

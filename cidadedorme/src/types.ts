@@ -233,6 +233,7 @@ export interface PrivatePlayerData {
   canUseAbility: boolean;
   availableSabotages?: SabotageAction[];
   receivedAnonymousMessage?: string;
+  detectiveClues?: Clue[];
 }
 
 // WebSocket message protocols

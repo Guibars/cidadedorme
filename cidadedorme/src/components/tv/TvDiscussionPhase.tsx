@@ -129,38 +129,13 @@ export function TvDiscussionPhase({ state, onAdvance }: TvDiscussionPhaseProps) 
             </div>
           )}
 
-          {/* Clues Discovered Bar */}
-          <div className="w-full p-3.5 rounded-2xl bg-neutral-900/80 border border-neutral-800 text-left">
-            <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-400 uppercase tracking-wider mb-1.5">
-              <Search className="w-3 h-3" />
-              <span>Pistas Recentes ({state.clues.length})</span>
-            </div>
-
-            {state.clues.length > 0 ? (
-              <div className="space-y-1.5 max-h-28 overflow-y-auto">
-                {state.clues.slice(-2).map((clue) => (
-                  <div
-                    key={clue.id}
-                    className="p-2 rounded-xl bg-neutral-950 border border-neutral-800/80 text-[11px] text-neutral-200 font-medium flex items-start gap-1.5"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0 mt-1" />
-                    <span className="leading-snug">{clue.text}</span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-[10px] text-neutral-500 italic">
-                Nenhuma pista adicional ainda nesta rodada.
-              </p>
-            )}
-          </div>
         </div>
       </div>
 
       {/* Bottom controls */}
       <div className="w-full flex items-center justify-between pt-2 border-t border-neutral-800/60">
         <span className="text-xs text-neutral-500">
-          A votação nos celulares começará automaticamente ao zerar o tempo ({seconds}s)
+          Apenas o Detetive poderá votar ao zerar o tempo ({seconds}s)
         </span>
 
         <button

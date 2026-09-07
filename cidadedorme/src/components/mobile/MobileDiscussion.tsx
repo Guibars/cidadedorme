@@ -131,6 +131,23 @@ export function MobileDiscussion({
                 <strong>Lembre-se:</strong> Se o Assassino tentar te matar na noite, o Assassino perde o jogo instantaneamente!
               </p>
             </div>
+
+            {/* Private Detective Clues */}
+            {privateData?.detectiveClues && privateData.detectiveClues.length > 0 && (
+              <div className="mt-3 p-3 rounded-xl bg-neutral-950 border border-cyan-700/50">
+                <div className="text-[10px] font-black uppercase text-cyan-500 mb-2 tracking-wider flex items-center gap-1.5">
+                  <Search className="w-3 h-3" />
+                  Pistas Confidenciais
+                </div>
+                <div className="space-y-1.5 max-h-32 overflow-y-auto">
+                  {privateData.detectiveClues.map((clue) => (
+                    <div key={clue.id} className="text-[11px] text-cyan-100/90 font-medium leading-relaxed bg-cyan-900/20 p-2 rounded-lg border border-cyan-800/30">
+                      • {clue.text}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -175,10 +192,10 @@ export function MobileDiscussion({
               Dicas para a Reunião
             </span>
             <p className="text-xs text-neutral-300 leading-relaxed">
-              • Preste atenção na denúncia do Detetive e nos rastros de sangue encontrados.
+              • Preste atenção na denúncia do Detetive e nos relatórios forenses.
             </p>
             <p className="text-xs text-neutral-300 leading-relaxed">
-              • Todos podem votar para mandar um suspeito para a eliminação.
+              • Apenas o Detetive tem a autoridade para registrar o voto final, convença-o!
             </p>
           </div>
         )}

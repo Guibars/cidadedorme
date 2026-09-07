@@ -197,35 +197,6 @@ export function MobileRoleReveal({
                   </div>
                 )}
 
-                {role === 'DETETIVE' && (
-                  <div className="p-6 rounded-3xl bg-gradient-to-b from-cyan-950/90 via-neutral-950 to-neutral-950 border-2 border-cyan-500/80 shadow-[0_0_50px_rgba(6,182,212,0.35)] text-center">
-                    <div className="w-16 h-16 mx-auto mb-3 rounded-2xl bg-cyan-600/30 border border-cyan-400 flex items-center justify-center text-cyan-400 shadow-lg">
-                      <Search className="w-9 h-9" />
-                    </div>
-                    <span className="text-xs font-black uppercase tracking-widest text-cyan-400">
-                      PAPEL SECRETO
-                    </span>
-                    <h2 className="text-3xl font-black uppercase font-['Cinzel'] tracking-wider text-cyan-400 mt-1">
-                      VOCÊ É O DETETIVE
-                    </h2>
-
-                    <div className="my-4 p-4 rounded-xl bg-neutral-950/80 border border-cyan-950/80 text-left space-y-2 text-xs">
-                      <p className="font-bold text-cyan-300 uppercase tracking-wide">
-                        Sua missão na mansão:
-                      </p>
-                      <p className="text-neutral-300 leading-relaxed">
-                        • Durante o início da noite você fechará os olhos enquanto o assassino age.
-                      </p>
-                      <p className="text-neutral-300 leading-relaxed">
-                        • Logo em seguida, você acordará para <strong>Investigar</strong> um suspeito secretamente e ver onde ele estava!
-                      </p>
-                      <p className="text-neutral-300 leading-relaxed">
-                        • No dia seguinte, guie a votação para prender o culpado.
-                      </p>
-                    </div>
-                  </div>
-                )}
-
                 {role === 'INOCENTE' && (
                   <div className="p-6 rounded-3xl bg-gradient-to-b from-slate-900 via-neutral-950 to-neutral-950 border-2 border-emerald-500/70 shadow-[0_0_50px_rgba(16,185,129,0.3)] text-center">
                     <div className="w-16 h-16 mx-auto mb-3 rounded-2xl bg-emerald-600/30 border border-emerald-400 flex items-center justify-center text-emerald-400 shadow-lg">
@@ -243,10 +214,10 @@ export function MobileRoleReveal({
                         Sua missão na mansão:
                       </p>
                       <p className="text-neutral-300 leading-relaxed">
-                        • Durma profundamente à noite enquanto os papéis agem.
+                        • À noite, caminhe e explore a mansão com sua lanterna, ou fique abrigado em um cômodo.
                       </p>
                       <p className="text-neutral-300 leading-relaxed">
-                        • Ao amanhecer, analise onde cada jogador estava na casa e ajude a desmascarar o assassino.
+                        • Ao amanhecer, debata com todos onde cada um estava e vote para eliminar o assassino!
                       </p>
                     </div>
                   </div>

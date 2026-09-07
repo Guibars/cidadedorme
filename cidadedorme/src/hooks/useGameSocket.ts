@@ -405,8 +405,17 @@ export function useGameSocket() {
   const confirmVote = () => dispatchAction('CONFIRM_VOTE');
   const useDetective = (targetPlayerId: string) => dispatchAction('USE_DETECTIVE', { targetPlayerId });
   const useSabotage = (sabotageId: string) => dispatchAction('USE_SABOTAGE', { sabotageId });
-  const nightKill = (targetPlayerId: string, crimeRoomId?: string) =>
-    dispatchAction('NIGHT_KILL', { targetPlayerId, crimeRoomId });
+  const movePlayer = (x: number, y: number, roomId?: string) => {
+    // Send via socket with low latency
+    sendWs({ type: 'PLAYER_MOVE', x, y, roomId: roomId as any });
+    // Also dispatch via action helper
+    dispatchAction('MOVE_PLAYER', { x, y, roomId });
+  };
+
+  const nightKill = (targetPlayerId: string, crimeRoomId?: string, x?: number, y?: number) => {
+    sendWs({ type: 'PLAYER_NIGHT_KILL', targetPlayerId, crimeRoomId: crimeRoomId as any, x, y });
+    dispatchAction('NIGHT_KILL', { targetPlayerId, crimeRoomId, x, y });
+  };
   const selectRoom = (roomId: string) => dispatchAction('SELECT_ROOM', { roomId });
   const nightInvestigate = (targetPlayerId: string) => dispatchAction('NIGHT_INVESTIGATE', { targetPlayerId });
   const addBot = () => dispatchAction('ADD_BOT');
@@ -452,6 +461,7 @@ export function useGameSocket() {
     useDetective,
     useSabotage,
     nightKill,
+    movePlayer,
     selectRoom,
     nightInvestigate,
     addBot,

@@ -174,9 +174,14 @@ async function startServer() {
           room.useKillerSabotage(playerId, payload.sabotageId);
         }
         break;
+      case 'MOVE_PLAYER':
+        if (playerId && payload.x !== undefined && payload.y !== undefined) {
+          room.movePlayer(playerId, payload.x, payload.y, payload.roomId);
+        }
+        break;
       case 'NIGHT_KILL':
         if (playerId && payload.targetPlayerId) {
-          room.setNightKill(playerId, payload.targetPlayerId, payload.crimeRoomId);
+          room.setNightKill(playerId, payload.targetPlayerId, payload.crimeRoomId, payload.x, payload.y);
         }
         break;
       case 'SELECT_ROOM':
@@ -374,11 +379,21 @@ async function startServer() {
             break;
           }
 
+          case 'PLAYER_MOVE': {
+            if (clientRoomCode && clientPlayerId && msg.x !== undefined && msg.y !== undefined) {
+              const room = gameManager.getRoom(clientRoomCode);
+              if (room) {
+                room.movePlayer(clientPlayerId, msg.x, msg.y, msg.roomId);
+              }
+            }
+            break;
+          }
+
           case 'PLAYER_NIGHT_KILL': {
             if (clientRoomCode && clientPlayerId && msg.targetPlayerId) {
               const room = gameManager.getRoom(clientRoomCode);
               if (room) {
-                room.setNightKill(clientPlayerId, msg.targetPlayerId, msg.crimeRoomId);
+                room.setNightKill(clientPlayerId, msg.targetPlayerId, msg.crimeRoomId, msg.x, msg.y);
               }
             }
             break;

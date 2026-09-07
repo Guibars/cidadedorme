@@ -1,14 +1,18 @@
 import { PlayerAvatar, QuestionScenario, GameEvent, SabotageAction } from '../types';
 
 export const AVATARS: PlayerAvatar[] = [
-  { id: 'netflix-red', name: 'Sorriso Vermelho', emoji: '😈', color: '#E50914', bgGradient: 'from-[#E50914] to-[#831010]' },
-  { id: 'netflix-blue', name: 'Detetive Azul', emoji: '🕶️', color: '#0071EB', bgGradient: 'from-[#0071EB] to-[#0A2F6E]' },
-  { id: 'netflix-yellow', name: 'Amarelo Enigmático', emoji: '😏', color: '#F59E0B', bgGradient: 'from-[#F59E0B] to-[#78350F]' },
-  { id: 'netflix-purple', name: 'Fantasma Violeta', emoji: '🎭', color: '#9333EA', bgGradient: 'from-[#9333EA] to-[#3B0764]' },
-  { id: 'netflix-green', name: 'Infiltrado Verde', emoji: '🥷', color: '#10B981', bgGradient: 'from-[#10B981] to-[#064E3B]' },
-  { id: 'netflix-cyan', name: 'Coruja Hacker', emoji: '🦉', color: '#06B6D4', bgGradient: 'from-[#06B6D4] to-[#164E63]' },
-  { id: 'netflix-pink', name: 'Agente Rosa', emoji: '🦊', color: '#EC4899', bgGradient: 'from-[#EC4899] to-[#831843]' },
-  { id: 'netflix-dark', name: 'Sombra da Noite', emoji: '👁️', color: '#64748B', bgGradient: 'from-[#64748B] to-[#1E293B]' },
+  { id: 'avatar-tophat', name: '', emoji: '🎩', color: '#E50914', bgGradient: 'from-[#E50914] to-[#831010]' },
+  { id: 'avatar-mask', name: '', emoji: '🎭', color: '#9333EA', bgGradient: 'from-[#9333EA] to-[#3B0764]' },
+  { id: 'avatar-monocle', name: '', emoji: '🧐', color: '#0071EB', bgGradient: 'from-[#0071EB] to-[#0A2F6E]' },
+  { id: 'avatar-key', name: '', emoji: '🗝️', color: '#F59E0B', bgGradient: 'from-[#F59E0B] to-[#78350F]' },
+  { id: 'avatar-candle', name: '', emoji: '🕯️', color: '#EF4444', bgGradient: 'from-[#EF4444] to-[#7F1D1D]' },
+  { id: 'avatar-crown', name: '', emoji: '👑', color: '#EAB308', bgGradient: 'from-[#EAB308] to-[#713F12]' },
+  { id: 'avatar-diamond', name: '', emoji: '💎', color: '#06B6D4', bgGradient: 'from-[#06B6D4] to-[#164E63]' },
+  { id: 'avatar-wolf', name: '', emoji: '🐺', color: '#64748B', bgGradient: 'from-[#64748B] to-[#1E293B]' },
+  { id: 'avatar-wine', name: '', emoji: '🍷', color: '#BE185D', bgGradient: 'from-[#BE185D] to-[#500724]' },
+  { id: 'avatar-compass', name: '', emoji: '🧭', color: '#10B981', bgGradient: 'from-[#10B981] to-[#064E3B]' },
+  { id: 'avatar-owl', name: '', emoji: '🦉', color: '#3B82F6', bgGradient: 'from-[#3B82F6] to-[#1E3A8A]' },
+  { id: 'avatar-chess', name: '', emoji: '♟️', color: '#8B5CF6', bgGradient: 'from-[#8B5CF6] to-[#4C1D95]' },
 ];
 
 export const SABOTAGE_OPTIONS: SabotageAction[] = [

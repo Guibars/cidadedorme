@@ -1,11 +1,10 @@
-export type Role = 'ASSASSINO' | 'DETETIVE' | 'INOCENTE';
+export type Role = 'ASSASSINO' | 'INOCENTE';
 
 export type GamePhase =
   | 'LOBBY'
   | 'INTRO'
   | 'ROLE_REVEAL'
   | 'NIGHT_KILLER'
-  | 'NIGHT_DETECTIVE'
   | 'NIGHT_FALL'
   | 'DAY_BREAK'
   | 'CRIME_SCENE'
@@ -47,6 +46,10 @@ export interface Player {
   hasRevealedRole: boolean;
   connected: boolean;
   currentRoomId?: MansionRoomId;
+  x?: number;
+  y?: number;
+  isMoving?: boolean;
+  direction?: 'left' | 'right' | 'up' | 'down';
   currentAnswer?: string;
   answerTimestamp?: number;
   votedTargetId?: string;
@@ -108,6 +111,10 @@ export interface PublicPlayer {
   hasVoted: boolean;
   eliminatedRole?: Role; // Only set when eliminated
   currentRoomId?: MansionRoomId;
+  x?: number;
+  y?: number;
+  isMoving?: boolean;
+  direction?: 'left' | 'right' | 'up' | 'down';
 }
 
 export interface PublicGameState {
@@ -118,6 +125,14 @@ export interface PublicGameState {
   timerSeconds: number;
   timerMax: number;
   players: PublicPlayer[];
+  lastStabLocation?: {
+    x: number;
+    y: number;
+    victimId: string;
+    victimName: string;
+    roomId?: MansionRoomId;
+    timestamp: number;
+  };
   currentQuestion?: {
     id: string;
     categoryLabel: string;
@@ -195,7 +210,8 @@ export type ClientMessage =
   | { type: 'HOST_START_GAME' }
   | { type: 'PLAYER_ROLE_REVEALED' }
   | { type: 'PLAYER_SELECT_ROOM'; roomId: MansionRoomId }
-  | { type: 'PLAYER_NIGHT_KILL'; targetPlayerId: string; crimeRoomId?: MansionRoomId }
+  | { type: 'PLAYER_MOVE'; x: number; y: number; roomId?: MansionRoomId }
+  | { type: 'PLAYER_NIGHT_KILL'; targetPlayerId: string; crimeRoomId?: MansionRoomId; x?: number; y?: number }
   | { type: 'PLAYER_NIGHT_INVESTIGATE'; targetPlayerId: string }
   | { type: 'PLAYER_SUBMIT_ANSWER'; answer: string }
   | { type: 'PLAYER_SUBMIT_VOTE'; targetPlayerId: string }

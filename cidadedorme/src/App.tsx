@@ -56,6 +56,7 @@ export default function App() {
     removePlayer,
     revealRole,
     nightKill,
+    movePlayer,
     selectRoom,
     nightInvestigate,
     submitAnswer,
@@ -144,8 +145,7 @@ export default function App() {
             privateData={privateData}
             publicState={publicState}
             onKill={nightKill}
-            onInvestigate={nightInvestigate}
-            onSelectRoom={selectRoom}
+            onMove={movePlayer}
           />
         )}
 

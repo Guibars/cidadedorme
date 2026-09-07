@@ -13,7 +13,14 @@ import {
   MansionRoomId,
 } from '../src/types';
 import { AVATARS, QUESTIONS_DATABASE, RANDOM_EVENTS_POOL, SABOTAGE_OPTIONS } from '../src/data/content';
-import { MANSION_ROOMS, getMansionRoom } from '../src/data/mansion';
+import {
+  MANSION_ROOMS,
+  MANSION_ROOM_BOUNDS,
+  getMansionRoom,
+  getRoomCenter,
+  getRoomAtPosition,
+  clampMansionPosition,
+} from '../src/data/mansion';
 
 const BOT_NAMES = ['Eduardo', 'Marianne', 'Lucas', 'Pedro', 'Beatriz', 'Rafael'];
 
@@ -44,6 +51,14 @@ export class Room {
   public nightCrimeRoomId: MansionRoomId | null = null;
   public nightCrimeRoomName: string | null = null;
   public nightClue: string = '';
+  public lastStabLocation: {
+    x: number;
+    y: number;
+    victimId: string;
+    victimName: string;
+    roomId?: MansionRoomId;
+    timestamp: number;
+  } | null = null;
 
   constructor(code: string) {
     this.code = code;
@@ -52,6 +67,7 @@ export class Room {
   public addPlayer(id: string, name: string, avatarId: string, socket?: WebSocket, isBot: boolean = false): Player {
     const avatar = AVATARS.find((a) => a.id === avatarId) || AVATARS[this.players.size % AVATARS.length];
     const defaultRoom = MANSION_ROOMS[this.players.size % MANSION_ROOMS.length].id;
+    const center = getRoomCenter(defaultRoom);
     const player: Player = {
       id,
       name,
@@ -61,6 +77,8 @@ export class Room {
       hasRevealedRole: false,
       connected: true,
       currentRoomId: defaultRoom,
+      x: center.x + Math.round(Math.random() * 24 - 12),
+      y: center.y + Math.round(Math.random() * 24 - 12),
       hasUsedAbility: false,
       hasConfirmedVote: false,
       privateNotes: [],
@@ -116,25 +134,21 @@ export class Room {
     this.nightCrimeRoomId = null;
     this.nightCrimeRoomName = null;
 
-    // Assign roles randomly
-    // 5 players: 1 Killer, 1 Detective, 3 Innocents
-    // 4 players: 1 Killer, 1 Detective, 2 Innocents
-    // 3 players: 1 Killer, 1 Detective, 1 Innocent
+    // Assign roles randomly: 1 ASSASSINO, everyone else is INOCENTE (No detectives, all can vote)
     const shuffled = [...playerList].sort(() => Math.random() - 0.5);
     const killer = shuffled[0];
-    const detective = shuffled[1];
 
     killer.role = 'ASSASSINO';
     this.killerPlayerId = killer.id;
 
-    detective.role = 'DETETIVE';
-
-    for (let i = 2; i < shuffled.length; i++) {
+    for (let i = 1; i < shuffled.length; i++) {
       shuffled[i].role = 'INOCENTE';
     }
 
-    // Distribute players across the mansion rooms (Among Us style layout)
+    // Distribute players across the mansion rooms with coordinates
     playerList.forEach((p, idx) => {
+      const room = MANSION_ROOMS[idx % MANSION_ROOMS.length];
+      const center = getRoomCenter(room.id);
       p.isAlive = true;
       p.hasRevealedRole = false;
       p.hasUsedAbility = false;
@@ -142,7 +156,9 @@ export class Room {
       p.currentAnswer = undefined;
       p.votedTargetId = undefined;
       p.privateNotes = [];
-      p.currentRoomId = MANSION_ROOMS[idx % MANSION_ROOMS.length].id;
+      p.currentRoomId = room.id;
+      p.x = center.x + Math.round(Math.random() * 20 - 10);
+      p.y = center.y + Math.round(Math.random() * 20 - 10);
     });
 
     this.phase = 'INTRO';
@@ -205,18 +221,32 @@ export class Room {
     this.startNightKillerPhase();
   }
 
-  // Turn 1: Assassin wakes up (with knife & room selection)
-  // Detective and Innocents SLEEP (eyes closed)
+  // Movement handler for live 2D map
+  public movePlayer(playerId: string, x: number, y: number, roomId?: MansionRoomId) {
+    const player = this.players.get(playerId);
+    if (!player || !player.isAlive) return;
+
+    const clamped = clampMansionPosition(x, y);
+    player.x = clamped.x;
+    player.y = clamped.y;
+    player.currentRoomId = roomId || getRoomAtPosition(clamped.x, clamped.y);
+    player.isMoving = true;
+
+    this.broadcastState();
+  }
+
+  // Night Phase: Darkness falls, Assassin hunts on the map, everyone moves around
   public startNightKillerPhase() {
     if (this.timerInterval) clearInterval(this.timerInterval);
     this.phase = 'NIGHT_KILLER';
-    // Generous 30 seconds for the killer to plan and strike
-    this.timerSeconds = 30;
-    this.timerMax = 30;
+    // 35 seconds for the killer to walk close and strike with the knife
+    this.timerSeconds = 35;
+    this.timerMax = 35;
     this.nightVictimId = null;
     this.nightVictim = null;
     this.nightCrimeRoomId = null;
     this.nightCrimeRoomName = null;
+    this.lastStabLocation = null;
 
     // Reset night choices and votes
     this.players.forEach((p) => {
@@ -228,24 +258,55 @@ export class Room {
     this.broadcastPrivateUpdates();
     this.broadcastAudio('playNightFall');
 
-    // If killer is a bot, pick a random victim after 7-12 seconds
-    const killer = this.players.get(this.killerPlayerId || '');
-    if (killer && killer.isBot && killer.isAlive) {
-      setTimeout(() => {
-        if (this.phase === 'NIGHT_KILLER') {
-          const aliveTargets = this.getAlivePlayers().filter((p) => p.id !== killer.id);
-          if (aliveTargets.length > 0) {
-            const chosen = aliveTargets[Math.floor(Math.random() * aliveTargets.length)];
-            const chosenRoom = chosen.currentRoomId || MANSION_ROOMS[Math.floor(Math.random() * MANSION_ROOMS.length)].id;
-            this.setNightKill(killer.id, chosen.id, chosenRoom);
+    // Simulate bots walking around during the night (Among Us feel)
+    const botMoveInterval = setInterval(() => {
+      if (this.phase !== 'NIGHT_KILLER' && this.phase !== 'NIGHT_FALL') {
+        clearInterval(botMoveInterval);
+        return;
+      }
+
+      this.players.forEach((p) => {
+        if (!p.isBot || !p.isAlive) return;
+
+        // If bot is Killer, move towards nearest living player
+        if (p.role === 'ASSASSINO') {
+          const targets = this.getAlivePlayers().filter((t) => t.id !== p.id);
+          if (targets.length > 0) {
+            // Pick closest or first target
+            const target = targets[0];
+            const tx = target.x || 400;
+            const ty = target.y || 250;
+            const px = p.x || 400;
+            const py = p.y || 250;
+
+            const dist = Math.hypot(tx - px, ty - py);
+            if (dist <= 70) {
+              // Close enough to strike!
+              this.setNightKill(p.id, target.id, target.currentRoomId, tx, ty);
+            } else {
+              // Step towards victim
+              const angle = Math.atan2(ty - py, tx - px);
+              const speed = 25;
+              const nextX = px + Math.cos(angle) * speed;
+              const nextY = py + Math.sin(angle) * speed;
+              this.movePlayer(p.id, nextX, nextY);
+            }
+          }
+        } else {
+          // Innocent bot: wander gently around mansion
+          if (Math.random() < 0.4) {
+            const dx = (Math.random() - 0.5) * 40;
+            const dy = (Math.random() - 0.5) * 40;
+            this.movePlayer(p.id, (p.x || 400) + dx, (p.y || 250) + dy);
           }
         }
-      }, 7000 + Math.random() * 5000);
-    }
+      });
+    }, 1200);
 
-    // 30-second timer for killer turn -> then detective wakes up
-    this.startTimer(30, () => {
-      this.startNightDetectivePhase();
+    // 35-second timer for killer turn -> then transitions directly to daybreak
+    this.startTimer(35, () => {
+      clearInterval(botMoveInterval);
+      this.startDayBreak();
     });
   }
 
@@ -254,7 +315,13 @@ export class Room {
     this.startNightKillerPhase();
   }
 
-  public setNightKill(killerId: string, targetPlayerId: string, crimeRoomId?: MansionRoomId) {
+  public setNightKill(
+    killerId: string,
+    targetPlayerId: string,
+    crimeRoomId?: MansionRoomId,
+    x?: number,
+    y?: number
+  ) {
     if (this.phase !== 'NIGHT_KILLER' && this.phase !== 'NIGHT_FALL') return;
     if (killerId !== this.killerPlayerId) return;
 
@@ -265,57 +332,35 @@ export class Room {
     this.nightCrimeRoomId = crimeRoomId || target.currentRoomId || 'kitchen';
     this.nightCrimeRoomName = getMansionRoom(this.nightCrimeRoomId).name;
 
+    const stabX = x !== undefined ? x : target.x || 400;
+    const stabY = y !== undefined ? y : target.y || 250;
+
+    this.lastStabLocation = {
+      x: stabX,
+      y: stabY,
+      victimId: target.id,
+      victimName: target.name,
+      roomId: this.nightCrimeRoomId,
+      timestamp: Date.now(),
+    };
+
     // Play knife slash sound and trigger private update
     this.broadcastAudio('playKnifeSlash');
+    this.broadcastState();
     this.broadcastPrivateUpdates();
 
-    // 3.5s delay to let the killer savor the stealth moment and return to bed
+    // 3.5s delay to let the killer savor the stealth strike, then daybreak (No detective, straight to discussion)
     setTimeout(() => {
       if (this.phase === 'NIGHT_KILLER' || this.phase === 'NIGHT_FALL') {
         if (this.timerInterval) clearInterval(this.timerInterval);
-        this.startNightDetectivePhase();
+        this.startDayBreak();
       }
     }, 3500);
   }
 
-  // Turn 2: Detective wakes up to investigate
-  // Assassin and Innocents SLEEP (eyes closed)
+  // Detective role is removed as requested by user - straight to Day Break
   public startNightDetectivePhase() {
-    if (this.timerInterval) clearInterval(this.timerInterval);
-
-    const detective = Array.from(this.players.values()).find(
-      (p) => p.role === 'DETETIVE' && p.isAlive
-    );
-
-    // If detective is alive, start detective investigation turn!
-    if (detective) {
-      this.phase = 'NIGHT_DETECTIVE';
-      this.timerSeconds = 25;
-      this.timerMax = 25;
-
-      this.broadcastState();
-      this.broadcastPrivateUpdates();
-
-      // If detective is a bot, pick a random suspect after 5-8s
-      if (detective.isBot) {
-        setTimeout(() => {
-          if (this.phase === 'NIGHT_DETECTIVE') {
-            const suspects = this.getAlivePlayers().filter((p) => p.id !== detective.id);
-            if (suspects.length > 0) {
-              const target = suspects[Math.floor(Math.random() * suspects.length)];
-              this.useDetectiveAbility(detective.id, target.id);
-            }
-          }
-        }, 5000 + Math.random() * 3000);
-      }
-
-      this.startTimer(25, () => {
-        this.startDayBreak();
-      });
-    } else {
-      // Detective is already eliminated or not playing, advance straight to day break
-      this.startDayBreak();
-    }
+    this.startDayBreak();
   }
 
   public startDayBreak() {
@@ -764,39 +809,8 @@ export class Room {
   }
 
   // Abilities
-  public useDetectiveAbility(detectiveId: string, targetId: string) {
-    const detective = this.players.get(detectiveId);
-    const target = this.players.get(targetId);
-    if (!detective || detective.role !== 'DETETIVE' || detective.hasUsedAbility || !target) return;
-
-    detective.hasUsedAbility = true;
-    const isKiller = target.role === 'ASSASSINO';
-
-    let resultText = '';
-    if (isKiller) {
-      resultText = `Há fortes indícios e rastros suspeitos conectando ${target.name} ao crime!`;
-    } else {
-      resultText = `Investigação concluída: ${target.name} NÃO é o assassino.`;
-    }
-
-    detective.privateNotes.push(resultText);
-    this.sendPrivateUpdate(detectiveId, {
-      detectiveInvestigationResult: {
-        targetName: target.name,
-        resultText,
-        isKiller,
-      },
-    });
-
-    // If used during NIGHT_DETECTIVE, give detective 4s to read report, then transition to DAY_BREAK!
-    if (this.phase === 'NIGHT_DETECTIVE') {
-      setTimeout(() => {
-        if (this.phase === 'NIGHT_DETECTIVE') {
-          if (this.timerInterval) clearInterval(this.timerInterval);
-          this.startDayBreak();
-        }
-      }, 4000);
-    }
+  public useDetectiveAbility(_detectiveId: string, _targetId: string) {
+    // Detective role was removed per user specifications
   }
 
   public useKillerSabotage(killerId: string, sabotageId: string) {
@@ -860,6 +874,10 @@ export class Room {
       hasRevealedRole: p.hasRevealedRole,
       connected: p.connected,
       currentRoomId: p.currentRoomId,
+      x: p.x,
+      y: p.y,
+      isMoving: p.isMoving,
+      direction: p.direction,
       hasAnswered: p.currentAnswer !== undefined,
       hasVoted: p.hasConfirmedVote,
       eliminatedRole: !p.isAlive ? p.role : undefined,
@@ -867,11 +885,11 @@ export class Room {
 
     const killer = this.players.get(this.killerPlayerId || '');
 
-    // Best Detective
+    // Best Detective / Investigator (player who voted against killer most)
     let bestDetective: { name: string; score: number } | undefined;
     let maxDetectiveScore = -1;
     this.players.forEach((p) => {
-      if (p.role === 'DETETIVE' || p.stats.votesCastAgainstKiller > 0) {
+      if (p.stats.votesCastAgainstKiller > 0) {
         const score = p.stats.votesCastAgainstKiller * 2 + (p.isAlive ? 1 : 0);
         if (score > maxDetectiveScore) {
           maxDetectiveScore = score;
@@ -910,6 +928,7 @@ export class Room {
       timerSeconds: this.timerSeconds,
       timerMax: this.timerMax,
       players: playerList,
+      lastStabLocation: this.lastStabLocation || undefined,
       currentQuestion: this.currentQuestion
         ? {
             id: this.currentQuestion.id,
@@ -991,8 +1010,8 @@ export class Room {
       canUseAbility:
         !player.hasUsedAbility &&
         player.isAlive &&
-        (player.role === 'DETETIVE' || player.role === 'ASSASSINO') &&
-        (this.phase === 'DISCUSSION' || this.phase === 'NIGHT_KILLER' || this.phase === 'NIGHT_DETECTIVE' || this.phase === 'NIGHT_FALL'),
+        player.role === 'ASSASSINO' &&
+        (this.phase === 'DISCUSSION' || this.phase === 'NIGHT_KILLER' || this.phase === 'NIGHT_FALL'),
       availableSabotages: player.role === 'ASSASSINO' ? SABOTAGE_OPTIONS : undefined,
       ...overrides,
     };
@@ -1046,9 +1065,7 @@ export class Room {
   public advancePhase() {
     if (this.phase === 'ROLE_REVEAL') {
       this.startRoundFlow();
-    } else if (this.phase === 'NIGHT_KILLER') {
-      this.startNightDetectivePhase();
-    } else if (this.phase === 'NIGHT_DETECTIVE') {
+    } else if (this.phase === 'NIGHT_KILLER' || this.phase === 'NIGHT_FALL') {
       this.startDayBreak();
     } else if (this.phase === 'ROUND_QUESTION') {
       this.revealAnswers();

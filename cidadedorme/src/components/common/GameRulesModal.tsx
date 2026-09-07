@@ -95,13 +95,22 @@ export function GameRulesModal({ isOpen, onClose }: GameRulesModalProps) {
                 </p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="p-3.5 rounded-2xl bg-cyan-950/30 border border-cyan-500/40">
+                  <span className="text-xs font-black uppercase tracking-wider text-cyan-400 block mb-1">
+                    🔍 O Detetive
+                  </span>
+                  <p className="text-xs text-neutral-300 leading-relaxed">
+                    Investiga suspeitos e pode lançar uma acusação formal. <strong>Regra crucial:</strong> Se o Assassino atacar o Detetive, o Assassino perde o jogo na mesma hora!
+                  </p>
+                </div>
+
                 <div className="p-3.5 rounded-2xl bg-emerald-950/30 border border-emerald-500/30">
                   <span className="text-xs font-black uppercase tracking-wider text-emerald-400 block mb-1">
-                    🛡️ Investigadores
+                    🛡️ Inocentes
                   </span>
-                  <p className="text-xs text-neutral-300">
-                    Mova-se pelos cômodos, fique perto de aliados confiáveis, analise os rastros de sangue da perícia e vote para prender o assassino.
+                  <p className="text-xs text-neutral-300 leading-relaxed">
+                    Mova-se pelos cômodos, fique perto de aliados confiáveis, analise os rastros de sangue e vote para prender o assassino.
                   </p>
                 </div>
 
@@ -109,8 +118,8 @@ export function GameRulesModal({ isOpen, onClose }: GameRulesModalProps) {
                   <span className="text-xs font-black uppercase tracking-wider text-rose-400 block mb-1">
                     🔪 Assassino
                   </span>
-                  <p className="text-xs text-neutral-300">
-                    Caminhe em silêncio no escuro, aproxime-se de uma vítima isolada e desfira o golpe com a faca! Crie álibis falsos durante o dia.
+                  <p className="text-xs text-neutral-300 leading-relaxed">
+                    Aproxime-se e desfira o golpe! Após o ataque, use o tempo de fuga para correr para outro cômodo e forjar seu álibi. Cuidado para não atacar o Detetive!
                   </p>
                 </div>
               </div>

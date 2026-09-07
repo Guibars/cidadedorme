@@ -1,4 +1,4 @@
-export type Role = 'ASSASSINO' | 'INOCENTE';
+export type Role = 'ASSASSINO' | 'DETETIVE' | 'INOCENTE';
 
 export type GamePhase =
   | 'LOBBY'
@@ -188,6 +188,17 @@ export interface PublicGameState {
   nightClue?: string;
   forensicEvidence?: ForensicEvidence;
   winner?: 'INVESTIGADORES' | 'ASSASSINO';
+  gameOverReason?: 'DETECTIVE_KILLED_KILLER' | 'KILLER_ELIMINATED' | 'KILLER_DOMINATION' | 'VOTE_EXECUTION';
+  gameOverMessage?: string;
+  detectiveAccusation?: {
+    detectiveName: string;
+    accusedPlayerId: string;
+    accusedPlayerName: string;
+    isCorrect: boolean;
+    timestamp: number;
+  };
+  nightKillHappened?: boolean;
+  killerEscapedToRoomId?: MansionRoomId;
   killerPlayer?: {
     id: string;
     name: string;

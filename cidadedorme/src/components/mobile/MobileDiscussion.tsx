@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Player, PublicGameState, PrivatePlayerData } from '../../types';
-import { Clock, Zap, ChevronRight, X } from 'lucide-react';
+import { Clock, Zap, ChevronRight, X, Search, Shield, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { sound } from '../../utils/audio';
 
 interface MobileDiscussionProps {
@@ -15,18 +15,34 @@ export function MobileDiscussion({
   player,
   state,
   privateData,
+  onUseDetective,
   onUseSabotage,
 }: MobileDiscussionProps) {
   const [showSabotageModal, setShowSabotageModal] = useState(false);
+  const [showDetectiveModal, setShowDetectiveModal] = useState(false);
+  const [accusedSuccessPlayerName, setAccusedSuccessPlayerName] = useState<string | null>(null);
 
   const isKiller = player.role === 'ASSASSINO';
-  const canUseAbility = privateData?.canUseAbility && !player.hasUsedAbility;
+  const isDetective = player.role === 'DETETIVE';
+  const canUseSabotage = privateData?.canUseAbility && !player.hasUsedAbility;
+  const aliveOthers = state.players.filter((p) => p.id !== player.id && p.isAlive);
+  const investigationResult = privateData?.detectiveInvestigationResult;
 
   const handleSabotageSubmit = (sabotageId: string) => {
     sound.playClick();
     sound.triggerVibrate([60, 120]);
     onUseSabotage(sabotageId);
     setShowSabotageModal(false);
+  };
+
+  const handleDetectiveAccuseSubmit = (targetId: string, targetName: string) => {
+    sound.playBoom();
+    sound.triggerVibrate([80, 150]);
+    if (onUseDetective) {
+      onUseDetective(targetId);
+    }
+    setAccusedSuccessPlayerName(targetName);
+    setShowDetectiveModal(false);
   };
 
   return (
@@ -38,7 +54,17 @@ export function MobileDiscussion({
             <span className="text-xl">{player.avatar.emoji}</span>
             <div>
               <h4 className="text-xs font-bold text-neutral-200">{player.name}</h4>
-              <span className="text-[10px] text-amber-400 font-bold uppercase">{player.role}</span>
+              <span
+                className={`text-[10px] font-black uppercase tracking-wider ${
+                  isDetective
+                    ? 'text-cyan-400'
+                    : isKiller
+                    ? 'text-rose-400'
+                    : 'text-amber-400'
+                }`}
+              >
+                {player.role}
+              </span>
             </div>
           </div>
 
@@ -61,6 +87,53 @@ export function MobileDiscussion({
           </p>
         </div>
 
+        {/* DETECTIVE SPECIAL ACCUSATION CARD */}
+        {isDetective && (
+          <div className="p-4 rounded-2xl bg-cyan-950/40 border-2 border-cyan-500/60 text-left shadow-lg">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2 text-cyan-300 font-black text-xs uppercase tracking-wide">
+                <Search className="w-4 h-4 text-cyan-400" />
+                <span>PODER DE ACUSAÇÃO DO DETETIVE</span>
+              </div>
+              <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-bold">
+                OFICIAL
+              </span>
+            </div>
+
+            <p className="text-xs text-cyan-100/90 mb-3 leading-relaxed">
+              Você é o <strong>Detetive Oficial</strong>. Lance uma acusação formal contra um suspeito para ser exibida com destaque na TV!
+            </p>
+
+            {/* If investigation result exists */}
+            {investigationResult && (
+              <div className="p-3 rounded-xl bg-neutral-900 border border-amber-500/70 mb-3 text-xs font-bold text-amber-300">
+                {investigationResult.resultText}
+              </div>
+            )}
+
+            {accusedSuccessPlayerName ? (
+              <div className="p-3 rounded-xl bg-cyan-900/60 border border-cyan-400 text-center text-xs font-black text-cyan-200">
+                🚨 Você acusou formalmente: {accusedSuccessPlayerName}! O telão da TV está exibindo sua denúncia.
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowDetectiveModal(true)}
+                className="w-full py-3.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 active:scale-95 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-[0_0_20px_rgba(6,182,212,0.4)] transition-all"
+              >
+                <Search className="w-4 h-4" />
+                <span>⚖️ ACUSAR UM SUSPEITO FORMALMENTE</span>
+              </button>
+            )}
+
+            <div className="mt-3 p-2.5 rounded-xl bg-neutral-900/90 border border-neutral-800 flex items-start gap-2">
+              <Shield className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+              <p className="text-[11px] text-neutral-300">
+                <strong>Lembre-se:</strong> Se o Assassino tentar te matar na noite, o Assassino perde o jogo instantaneamente!
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Killer Action Card */}
         {isKiller && (
           <div className="p-4 rounded-2xl bg-rose-950/30 border border-rose-500/40 text-left">
@@ -74,7 +147,7 @@ export function MobileDiscussion({
               </span>
             </div>
 
-            {canUseAbility ? (
+            {canUseSabotage ? (
               <div>
                 <p className="text-xs text-neutral-300 mb-3">
                   Provoque um apagão ou plante falsas pistas para confundir as suspeitas do grupo.
@@ -96,13 +169,13 @@ export function MobileDiscussion({
         )}
 
         {/* Innocent tips */}
-        {!isKiller && (
+        {!isKiller && !isDetective && (
           <div className="p-4 rounded-2xl bg-neutral-900 border border-neutral-800 text-left space-y-2">
             <span className="text-xs font-bold text-amber-400 uppercase tracking-wider block">
               Dicas para a Reunião
             </span>
             <p className="text-xs text-neutral-300 leading-relaxed">
-              • Preste atenção em quem demorou para responder ou mudou de cômodo.
+              • Preste atenção na denúncia do Detetive e nos rastros de sangue encontrados.
             </p>
             <p className="text-xs text-neutral-300 leading-relaxed">
               • Todos podem votar para mandar um suspeito para a eliminação.
@@ -110,6 +183,48 @@ export function MobileDiscussion({
           </div>
         )}
       </div>
+
+      {/* Detective Accusation Modal */}
+      {showDetectiveModal && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-neutral-900 border-2 border-cyan-500/80 p-5 animate-in zoom-in-95">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-black uppercase tracking-wider text-cyan-300 flex items-center gap-2">
+                <Search className="w-4 h-4 text-cyan-400" />
+                <span>Quem você acusa de ser o Assassino?</span>
+              </h3>
+              <button
+                onClick={() => setShowDetectiveModal(false)}
+                className="p-1 rounded text-neutral-400 hover:text-neutral-100 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-neutral-300 mb-4">
+              Sua acusação oficial será exibida em destaque no telão da TV para todos os participantes!
+            </p>
+
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+              {aliveOthers.map((suspect) => (
+                <button
+                  key={suspect.id}
+                  onClick={() => handleDetectiveAccuseSubmit(suspect.id, suspect.name)}
+                  className="w-full p-3 rounded-xl bg-neutral-950 border border-neutral-800 hover:border-cyan-400 text-left transition-all flex items-center justify-between group cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">{suspect.avatar?.emoji || '👤'}</span>
+                    <span className="text-xs font-black text-neutral-200 group-hover:text-cyan-300">
+                      {suspect.name}
+                    </span>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-neutral-500 group-hover:text-cyan-400" />
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Killer Sabotage Modal */}
       {showSabotageModal && privateData?.availableSabotages && (

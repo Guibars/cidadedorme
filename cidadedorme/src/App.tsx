@@ -146,6 +146,7 @@ export default function App() {
             publicState={publicState}
             onKill={nightKill}
             onMove={movePlayer}
+            onInvestigate={nightInvestigate}
           />
         )}
 

@@ -61,6 +61,31 @@ export function TvDiscussionPhase({ state, onAdvance }: TvDiscussionPhaseProps) 
         </p>
       </div>
 
+      {/* Detective Formal Accusation Banner on TV */}
+      {state.detectiveAccusation && (
+        <div className="w-full my-2 p-3.5 rounded-2xl bg-amber-500/15 border-2 border-amber-500/80 shadow-[0_0_35px_rgba(245,158,11,0.3)] animate-in zoom-in-95 duration-500 flex items-center justify-between text-left">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-400 flex items-center justify-center text-2xl shadow-md shrink-0">
+              🔍
+            </div>
+            <div>
+              <span className="text-[11px] font-black uppercase tracking-wider text-amber-400 block">
+                🚨 ACUSAÇÃO FORMAL DO DETETIVE ({state.detectiveAccusation.detectiveName})
+              </span>
+              <h4 className="text-xl md:text-2xl font-black text-white font-['Cinzel'] uppercase">
+                "{state.detectiveAccusation.accusedPlayerName} É O ASSASSINO!"
+              </h4>
+              <p className="text-xs text-amber-200/90 mt-0.5">
+                O Detetive investigou e aponta com convicção este suspeito para o julgamento!
+              </p>
+            </div>
+          </div>
+          <div className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500 text-neutral-950 font-black text-xs uppercase tracking-wider shrink-0 shadow-md">
+            MANDADO EXPEDIDO
+          </div>
+        </div>
+      )}
+
       {/* Main Content Area: Map & Countdown side by side or stacked */}
       <div className="w-full my-2 flex flex-col lg:flex-row items-center justify-between gap-4">
         {/* Left / Center: Mansion Map */}

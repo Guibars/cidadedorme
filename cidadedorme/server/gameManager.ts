@@ -46,6 +46,17 @@ export class Room {
   public eliminatedPlayer: { id: string; name: string; avatar: any; role: Role } | null = null;
   public winner: 'INVESTIGADORES' | 'ASSASSINO' | null = null;
   public killerPlayerId: string | null = null;
+  public detectivePlayerId: string | null = null;
+  public gameOverReason: 'DETECTIVE_KILLED_KILLER' | 'KILLER_ELIMINATED' | 'KILLER_DOMINATION' | 'VOTE_EXECUTION' | null = null;
+  public gameOverMessage: string | null = null;
+  public detectiveAccusation: {
+    detectiveName: string;
+    accusedPlayerId: string;
+    accusedPlayerName: string;
+    isCorrect: boolean;
+    timestamp: number;
+  } | null = null;
+  public nightKillHappened: boolean = false;
   public pendingSabotage: string | null = null;
   public nightVictimId: string | null = null;
   public nightVictim: { id: string; name: string; avatar: any } | null = null;
@@ -135,15 +146,23 @@ export class Room {
     this.nightVictim = null;
     this.nightCrimeRoomId = null;
     this.nightCrimeRoomName = null;
+    this.gameOverReason = null;
+    this.gameOverMessage = null;
+    this.detectiveAccusation = null;
+    this.nightKillHappened = false;
 
-    // Assign roles randomly: 1 ASSASSINO, everyone else is INOCENTE (No detectives, all can vote)
+    // Assign roles randomly: 1 ASSASSINO, 1 DETETIVE, others INOCENTE
     const shuffled = [...playerList].sort(() => Math.random() - 0.5);
     const killer = shuffled[0];
+    const detective = shuffled[1];
 
     killer.role = 'ASSASSINO';
     this.killerPlayerId = killer.id;
 
-    for (let i = 1; i < shuffled.length; i++) {
+    detective.role = 'DETETIVE';
+    this.detectivePlayerId = detective.id;
+
+    for (let i = 2; i < shuffled.length; i++) {
       shuffled[i].role = 'INOCENTE';
     }
 
@@ -327,10 +346,25 @@ export class Room {
   ) {
     if (this.phase !== 'NIGHT_KILLER' && this.phase !== 'NIGHT_FALL') return;
     if (killerId !== this.killerPlayerId) return;
+    if (this.nightKillHappened) return; // Only 1 kill per night
 
     const target = this.players.get(targetPlayerId);
     if (!target || !target.isAlive || target.id === killerId) return;
 
+    // REGRA CRÍTICA: Se o assassino atacar o Detetive, o Assassino perde imediatamente!
+    if (target.role === 'DETETIVE') {
+      this.nightVictimId = null;
+      this.winner = 'INVESTIGADORES';
+      this.gameOverReason = 'DETECTIVE_KILLED_KILLER';
+      this.gameOverMessage = `🚨 O ASSASSINO TENTOU ATACAR O DETETIVE (${target.name})! O Detetive estava armado, desarmou o Assassino e o prendeu em flagrante! VITÓRIA DOS INOCENTES E DO DETETIVE!`;
+      
+      this.broadcastAudio('playBoom');
+      this.endGame('INVESTIGADORES');
+      return;
+    }
+
+    // Ataque bem-sucedido em um inocente
+    this.nightKillHappened = true;
     this.nightVictimId = target.id;
     this.nightCrimeRoomId = crimeRoomId || target.currentRoomId || 'kitchen';
     this.nightCrimeRoomName = getMansionRoom(this.nightCrimeRoomId).name;
@@ -347,18 +381,18 @@ export class Room {
       timestamp: Date.now(),
     };
 
-    // Play knife slash sound and trigger private update
+    // Toca som de facada
     this.broadcastAudio('playKnifeSlash');
+
+    // TEMPO DE FUGA DO ASSASSINO:
+    // O assassino precisa de tempo para correr e fugir para outro cômodo!
+    // Garante pelo menos 14 segundos para fugir e forjar álibi
+    if (this.timerSeconds < 14) {
+      this.timerSeconds = 14;
+    }
+
     this.broadcastState();
     this.broadcastPrivateUpdates();
-
-    // 3.5s delay to let the killer savor the stealth strike, then daybreak (No detective, straight to discussion)
-    setTimeout(() => {
-      if (this.phase === 'NIGHT_KILLER' || this.phase === 'NIGHT_FALL') {
-        if (this.timerInterval) clearInterval(this.timerInterval);
-        this.startDayBreak();
-      }
-    }, 3500);
   }
 
   // Detective role is removed as requested by user - straight to Day Break
@@ -851,9 +885,41 @@ export class Room {
     this.broadcastPrivateUpdates();
   }
 
-  // Abilities
-  public useDetectiveAbility(_detectiveId: string, _targetId: string) {
-    // Detective role was removed per user specifications
+  // Detective Investigation / Accusation Ability
+  public useDetectiveAbility(detectiveId: string, targetId: string) {
+    const detective = this.players.get(detectiveId);
+    if (!detective || detective.role !== 'DETETIVE' || !detective.isAlive) return;
+
+    const target = this.players.get(targetId);
+    if (!target || target.id === detectiveId) return;
+
+    detective.hasUsedAbility = true;
+    const isKiller = target.role === 'ASSASSINO';
+
+    // Registra a acusação oficial do Detetive para ser exibida na TV
+    this.detectiveAccusation = {
+      detectiveName: detective.name,
+      accusedPlayerId: target.id,
+      accusedPlayerName: target.name,
+      isCorrect: isKiller,
+      timestamp: Date.now(),
+    };
+
+    // Informação pericial privada para o detetive
+    const privateData = this.getPrivateData(detectiveId);
+    if (privateData) {
+      privateData.detectiveInvestigationResult = {
+        targetName: target.name,
+        isKiller,
+        resultText: isKiller
+          ? `🚨 INVESTIGAÇÃO PRECISA: ${target.name} É O ASSASSINO! Convença os outros a votar nele!`
+          : `🔍 FICHA LIMPA: ${target.name} é INOCENTE. Não é o assassino!`,
+      };
+    }
+
+    this.broadcastAudio(isKiller ? 'playBoom' : 'playNotification');
+    this.broadcastState();
+    this.sendPrivateUpdate(detectiveId);
   }
 
   public useKillerSabotage(killerId: string, sabotageId: string) {
@@ -995,6 +1061,11 @@ export class Room {
       nightClue: this.nightClue || undefined,
       forensicEvidence: this.forensicEvidence || undefined,
       winner: this.winner || undefined,
+      gameOverReason: this.gameOverReason || undefined,
+      gameOverMessage: this.gameOverMessage || undefined,
+      detectiveAccusation: this.detectiveAccusation || undefined,
+      nightKillHappened: this.nightKillHappened,
+      killerEscapedToRoomId: this.forensicEvidence?.killerEscapeRoomId || undefined,
       killerPlayer:
         this.phase === 'GAME_OVER' && killer
           ? {

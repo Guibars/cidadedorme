@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import { PublicGameState } from '../../types';
-import { Moon, EyeOff, ShieldAlert, FastForward } from 'lucide-react';
+import { Moon, EyeOff, FastForward, Search, Skull } from 'lucide-react';
 import { sound } from '../../utils/audio';
+import { MansionMap } from '../common/MansionMap';
 
 interface TvNightFallProps {
   state: PublicGameState;
@@ -13,93 +14,106 @@ export function TvNightFall({ state, onAdvance }: TvNightFallProps) {
     sound.playNightFall();
   }, []);
 
-  const alivePlayers = state.players.filter((p) => p.isAlive);
+  const isDetectivePhase = state.phase === 'NIGHT_DETECTIVE';
 
   return (
-    <div className="flex-1 w-full max-w-6xl mx-auto px-6 py-6 flex flex-col justify-between items-center text-center bg-[#0d0d0d] relative overflow-hidden">
+    <div className="flex-1 w-full max-w-6xl mx-auto px-6 py-4 flex flex-col justify-between items-center text-center bg-[#0d0d0d] relative overflow-hidden select-none">
       {/* Sinister Red/Dark Ambient Glow */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-red-950/20 rounded-full blur-[140px] animate-pulse" />
-        <div className="absolute top-10 left-1/4 w-80 h-80 bg-blue-950/15 rounded-full blur-[100px]" />
+        <div
+          className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full blur-[140px] animate-pulse ${
+            isDetectivePhase ? 'bg-cyan-950/25' : 'bg-red-950/25'
+          }`}
+        />
       </div>
 
       {/* Header Badge */}
       <div className="relative z-10">
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-red-950/40 border border-red-800/40 text-red-400 text-xs font-black uppercase tracking-[0.25em] mb-4">
-          <Moon className="w-4 h-4 text-indigo-400 animate-pulse" />
-          <span>FASE DA NOITE • RODADA {state.round}</span>
+        <div
+          className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full border text-xs font-black uppercase tracking-[0.25em] mb-2 ${
+            isDetectivePhase
+              ? 'bg-cyan-950/60 border-cyan-500/40 text-cyan-400'
+              : 'bg-red-950/50 border-red-800/50 text-red-400'
+          }`}
+        >
+          {isDetectivePhase ? (
+            <>
+              <Search className="w-4 h-4 text-cyan-400 animate-pulse" />
+              <span>TURNO DO DETETIVE • INVESTIGAÇÃO</span>
+            </>
+          ) : (
+            <>
+              <Skull className="w-4 h-4 text-rose-500 animate-pulse" />
+              <span>A CIDADE DORME • FACA DO ASSASSINO</span>
+            </>
+          )}
         </div>
 
-        <h1 className="text-6xl md:text-8xl font-black uppercase font-['Bebas_Neue',sans-serif] tracking-widest text-white drop-shadow-[0_8px_35px_rgba(229,9,20,0.5)]">
-          A CIDADE DORME
+        <h1 className="text-5xl md:text-7xl font-black uppercase font-['Cinzel',serif] tracking-widest text-white drop-shadow-[0_8px_35px_rgba(229,9,20,0.5)]">
+          {isDetectivePhase ? 'O DETETIVE INVESTIGA' : 'A MANSÃO EM SILÊNCIO'}
         </h1>
 
-        <p className="text-lg md:text-2xl text-neutral-300 font-medium max-w-3xl mx-auto mt-3">
-          Todos fecham os olhos e abaixam a cabeça.
-          <br />
-          <span className="text-red-400 font-bold">O Assassino acorda em silêncio</span> e escolhe sua vítima na tela do celular.
+        <p className="text-base md:text-xl text-neutral-300 font-medium max-w-3xl mx-auto mt-1">
+          {isDetectivePhase ? (
+            <>
+              Todos os jogadores permanecem com os olhos fechados.
+              <br />
+              <span className="text-cyan-400 font-bold">O Detetive analisa os cômodos da casa</span> e investiga um suspeito no celular.
+            </>
+          ) : (
+            <>
+              Todos fecham os olhos e abaixam a cabeça.
+              <br />
+              <span className="text-rose-400 font-bold">O Assassino empunha sua faca</span> e escolhe um cômodo e uma vítima.
+            </>
+          )}
         </p>
       </div>
 
-      {/* Center Countdown Sphere */}
-      <div className="relative z-10 my-8 flex flex-col items-center">
-        <div className="relative w-40 h-40 md:w-48 md:h-48 rounded-full border-4 border-neutral-800 flex items-center justify-center bg-black/70 shadow-[0_0_50px_rgba(229,9,20,0.3)]">
-          {/* Pulsing ring */}
-          <div className="absolute inset-0 rounded-full border-2 border-red-600/50 animate-ping pointer-events-none opacity-40" />
-          
-          <div className="flex flex-col items-center">
-            <span className="text-6xl md:text-7xl font-black font-mono text-red-500 tracking-wider">
-              {state.timerSeconds}
-            </span>
-            <span className="text-[11px] uppercase tracking-widest text-neutral-400 font-bold mt-1">
-              Segundos
-            </span>
-          </div>
+      {/* Center Countdown & Mansion Map */}
+      <div className="relative z-10 my-4 w-full flex flex-col items-center">
+        {/* Timer Pill */}
+        <div className="flex items-center gap-2 px-4 py-1 rounded-full bg-neutral-900/90 border border-neutral-800 mb-3 shadow-md">
+          <span className="text-xs text-neutral-400 font-bold uppercase tracking-wider">
+            Tempo Restante:
+          </span>
+          <span
+            className={`text-xl font-mono font-black ${
+              isDetectivePhase ? 'text-cyan-400' : 'text-rose-500'
+            }`}
+          >
+            {state.timerSeconds}s
+          </span>
+          <div className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping ml-1" />
         </div>
 
-        <div className="mt-4 flex items-center gap-2 text-neutral-400 text-sm">
-          <EyeOff className="w-4 h-4 text-red-400" />
-          <span>Olhos fechados! O jogo avançará automaticamente.</span>
-        </div>
-      </div>
-
-      {/* Sleeping Players Row */}
-      <div className="relative z-10 w-full max-w-4xl">
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-          {alivePlayers.map((player) => (
-            <div
-              key={player.id}
-              className="p-3.5 rounded-xl bg-neutral-900/80 border border-neutral-800 flex flex-col items-center text-center shadow-lg"
-            >
-              <div
-                className={`w-12 h-12 rounded-lg flex items-center justify-center text-2xl mb-2 bg-gradient-to-br ${player.avatar.bgGradient} opacity-60 grayscale-[40%]`}
-              >
-                {player.avatar.emoji}
-              </div>
-              <span className="text-sm font-bold text-neutral-200 truncate w-full">
-                {player.name}
-              </span>
-              <span className="text-[10px] text-indigo-300/80 font-mono mt-0.5 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
-                Dormindo...
-              </span>
-            </div>
-          ))}
+        {/* Mansion Floor Plan with Characters (Among Us style) */}
+        <div className="w-full max-w-4xl bg-black/50 p-4 rounded-3xl border border-neutral-800/80 shadow-2xl backdrop-blur-sm">
+          <MansionMap
+            players={state.players}
+            compact={true}
+            title="Posição dos Jogadores nos Cômodos da Mansão"
+          />
         </div>
       </div>
 
-      {/* Host Skip Control */}
-      {onAdvance && (
-        <div className="relative z-10 mt-6">
+      {/* Footer Instructions */}
+      <div className="relative z-10 flex items-center justify-between w-full max-w-4xl text-xs text-neutral-400">
+        <div className="flex items-center gap-2">
+          <EyeOff className="w-4 h-4 text-rose-500 animate-pulse" />
+          <span>Mantenham as cabeças baixas e olhos fechados!</span>
+        </div>
+
+        {onAdvance && (
           <button
             onClick={onAdvance}
-            className="px-4 py-2 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white text-xs font-semibold flex items-center gap-2 transition-colors cursor-pointer"
+            className="px-3 py-1.5 rounded-lg bg-neutral-800/90 hover:bg-neutral-700 text-neutral-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
           >
-            <FastForward className="w-3.5 h-3.5" />
-            <span>Pular Noite (Avançar)</span>
+            <FastForward className="w-3.5 h-3.5 text-amber-400" />
+            <span>Pular Turno Noturno</span>
           </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

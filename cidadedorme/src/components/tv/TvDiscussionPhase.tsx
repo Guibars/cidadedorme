@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import { PublicGameState } from '../../types';
-import { MessageCircle, Search, ArrowRight, Flame } from 'lucide-react';
+import { MessageCircle, Search, ArrowRight, Flame, MapPin } from 'lucide-react';
 import { sound } from '../../utils/audio';
+import { MansionMap } from '../common/MansionMap';
 
 interface TvDiscussionPhaseProps {
   state: PublicGameState;
@@ -42,85 +43,104 @@ export function TvDiscussionPhase({ state, onAdvance }: TvDiscussionPhaseProps) 
 
   return (
     <div
-      className={`flex-1 w-full max-w-5xl mx-auto px-6 py-6 flex flex-col justify-between items-center text-center transition-colors duration-500 ${
+      className={`flex-1 w-full max-w-6xl mx-auto px-6 py-4 flex flex-col justify-between items-center text-center transition-colors duration-500 select-none ${
         isCritical ? 'bg-red-950/20' : ''
       }`}
     >
       {/* Top Banner */}
       <div>
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-bold uppercase tracking-wider mb-2">
+        <div className="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-bold uppercase tracking-wider mb-1">
           <MessageCircle className="w-3.5 h-3.5" />
-          MOMENTO DE CONFRONTO
+          DEBATE NA MANSÃO (AMONG US)
         </div>
         <h2 className="text-3xl md:text-5xl font-black uppercase tracking-wide font-['Cinzel'] text-neutral-100">
-          VOCÊS TÊM {state.timerMax} SEGUNDOS PARA DISCUTIR
+          DISCUSSÃO ABERTA DOS JOGADORES
         </h2>
-        <p className="text-xs md:text-sm text-neutral-400 mt-1">
-          Façam perguntas, observem reações e debatam quem tem o álibi mais fraco!
+        <p className="text-xs md:text-sm text-neutral-400 mt-0.5">
+          Perguntem onde cada um estava na casa e debatam as inconsistências antes da votação!
         </p>
       </div>
 
-      {/* Center Giant Countdown */}
-      <div className="my-auto py-6">
-        {isUrgent ? (
-          <div className="animate-pulse">
-            <div className="text-8xl md:text-[140px] font-black font-mono tracking-tighter text-rose-500 drop-shadow-[0_0_50px_rgba(244,63,94,0.8)] leading-none">
-              {seconds}
-            </div>
-            <div className="flex items-center justify-center gap-2 mt-2 text-rose-400 font-bold uppercase tracking-widest text-sm animate-bounce">
-              <Flame className="w-4 h-4 fill-current" />
-              TEMPO ACABANDO! PREPAREM OS VOTOS!
-            </div>
-          </div>
-        ) : (
-          <div className="p-8 md:p-12 rounded-3xl bg-neutral-900/60 border border-neutral-800 backdrop-blur-xl shadow-2xl inline-block">
-            <span className="text-xs uppercase tracking-widest text-neutral-400 font-semibold block mb-1">
-              TEMPO RESTANTE
-            </span>
-            <div className="text-6xl md:text-8xl font-black font-mono tracking-wider text-amber-400 drop-shadow-[0_0_30px_rgba(245,158,11,0.3)]">
-              {formatTimer(seconds)}
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Main Content Area: Map & Countdown side by side or stacked */}
+      <div className="w-full my-2 flex flex-col lg:flex-row items-center justify-between gap-4">
+        {/* Left / Center: Mansion Map */}
+        <div className="flex-1 w-full bg-neutral-900/70 p-4 rounded-3xl border border-neutral-800 backdrop-blur-md shadow-xl">
+          <MansionMap
+            players={state.players}
+            highlightRoomId={state.nightCrimeRoomId}
+            victimPlayerId={state.nightVictim?.id}
+            compact={true}
+            title={
+              state.nightCrimeRoomName
+                ? `Cena: Crime na(o) ${state.nightCrimeRoomName} • Onde cada um estava:`
+                : 'Posicionamento dos Suspeitos na Casa'
+            }
+          />
+        </div>
 
-      {/* Clues Discovered Bar */}
-      <div className="w-full max-w-3xl my-4">
-        <div className="p-4 rounded-2xl bg-neutral-900/80 border border-neutral-800 text-left">
-          <div className="flex items-center gap-2 text-xs font-bold text-amber-400 uppercase tracking-wider mb-2">
-            <Search className="w-3.5 h-3.5" />
-            <span>Pistas Identificadas até agora ({state.clues.length})</span>
-          </div>
-
-          {state.clues.length > 0 ? (
-            <div className="space-y-2">
-              {state.clues.slice(-2).map((clue) => (
-                <div
-                  key={clue.id}
-                  className="p-3 rounded-xl bg-neutral-950 border border-neutral-800/80 text-xs md:text-sm text-neutral-200 font-medium flex items-center gap-2"
-                >
-                  <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />
-                  <span>{clue.text}</span>
-                </div>
-              ))}
+        {/* Right: Giant Timer & Clues */}
+        <div className="w-full lg:w-72 flex flex-col items-center gap-3">
+          {isUrgent ? (
+            <div className="p-6 rounded-3xl bg-rose-950/40 border border-rose-600/50 text-center animate-pulse w-full">
+              <span className="text-[10px] uppercase tracking-widest text-rose-300 font-bold block mb-1">
+                TEMPO ACABANDO
+              </span>
+              <div className="text-6xl font-black font-mono tracking-tighter text-rose-500 leading-none">
+                {seconds}s
+              </div>
+              <div className="flex items-center justify-center gap-1.5 mt-2 text-rose-400 font-bold uppercase tracking-wider text-[11px]">
+                <Flame className="w-3.5 h-3.5 fill-current" />
+                <span>Preparem os votos!</span>
+              </div>
             </div>
           ) : (
-            <p className="text-xs text-neutral-500 italic">
-              Nenhuma pista adicional descoberta ainda nesta rodada.
-            </p>
+            <div className="p-6 rounded-3xl bg-neutral-900/90 border border-neutral-800 text-center w-full shadow-lg">
+              <span className="text-[10px] uppercase tracking-widest text-neutral-400 font-semibold block mb-1">
+                TEMPO RESTANTE
+              </span>
+              <div className="text-5xl font-black font-mono tracking-wider text-amber-400">
+                {formatTimer(seconds)}
+              </div>
+            </div>
           )}
+
+          {/* Clues Discovered Bar */}
+          <div className="w-full p-3.5 rounded-2xl bg-neutral-900/80 border border-neutral-800 text-left">
+            <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-400 uppercase tracking-wider mb-1.5">
+              <Search className="w-3 h-3" />
+              <span>Pistas Recentes ({state.clues.length})</span>
+            </div>
+
+            {state.clues.length > 0 ? (
+              <div className="space-y-1.5 max-h-28 overflow-y-auto">
+                {state.clues.slice(-2).map((clue) => (
+                  <div
+                    key={clue.id}
+                    className="p-2 rounded-xl bg-neutral-950 border border-neutral-800/80 text-[11px] text-neutral-200 font-medium flex items-start gap-1.5"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0 mt-1" />
+                    <span className="leading-snug">{clue.text}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[10px] text-neutral-500 italic">
+                Nenhuma pista adicional ainda nesta rodada.
+              </p>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Bottom controls */}
-      <div className="w-full flex items-center justify-between pt-4 border-t border-neutral-800/60">
+      <div className="w-full flex items-center justify-between pt-2 border-t border-neutral-800/60">
         <span className="text-xs text-neutral-500">
-          A votação nos celulares começará automaticamente ao zerar o tempo
+          A votação nos celulares começará automaticamente ao zerar o tempo ({seconds}s)
         </span>
 
         <button
           onClick={onAdvance}
-          className="px-6 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold tracking-wider uppercase flex items-center gap-2 transition-all cursor-pointer shadow-[0_0_20px_rgba(225,29,72,0.3)]"
+          className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold tracking-wider uppercase flex items-center gap-1.5 transition-all cursor-pointer shadow-[0_0_20px_rgba(225,29,72,0.3)]"
         >
           <span>Ir para Votação Agora</span>
           <ArrowRight className="w-3.5 h-3.5" />

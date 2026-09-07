@@ -4,6 +4,8 @@ export type GamePhase =
   | 'LOBBY'
   | 'INTRO'
   | 'ROLE_REVEAL'
+  | 'NIGHT_KILLER'
+  | 'NIGHT_DETECTIVE'
   | 'NIGHT_FALL'
   | 'DAY_BREAK'
   | 'CRIME_SCENE'
@@ -15,6 +17,16 @@ export type GamePhase =
   | 'VOTE_REVEAL'
   | 'VERDICT'
   | 'GAME_OVER';
+
+export type MansionRoomId = 'bedroom' | 'kitchen' | 'living' | 'garden' | 'library' | 'basement';
+
+export interface MansionRoom {
+  id: MansionRoomId;
+  name: string;
+  icon: string;
+  color: string;
+  description: string;
+}
 
 export interface PlayerAvatar {
   id: string;
@@ -34,6 +46,7 @@ export interface Player {
   isAlive: boolean;
   hasRevealedRole: boolean;
   connected: boolean;
+  currentRoomId?: MansionRoomId;
   currentAnswer?: string;
   answerTimestamp?: number;
   votedTargetId?: string;
@@ -83,6 +96,20 @@ export interface SabotageAction {
   icon: string;
 }
 
+export interface PublicPlayer {
+  id: string;
+  name: string;
+  avatar: PlayerAvatar;
+  isBot?: boolean;
+  isAlive: boolean;
+  hasRevealedRole: boolean;
+  connected: boolean;
+  hasAnswered: boolean;
+  hasVoted: boolean;
+  eliminatedRole?: Role; // Only set when eliminated
+  currentRoomId?: MansionRoomId;
+}
+
 export interface PublicGameState {
   roomCode: string;
   phase: GamePhase;
@@ -90,18 +117,7 @@ export interface PublicGameState {
   maxRounds: number;
   timerSeconds: number;
   timerMax: number;
-  players: {
-    id: string;
-    name: string;
-    avatar: PlayerAvatar;
-    isBot?: boolean;
-    isAlive: boolean;
-    hasRevealedRole: boolean;
-    connected: boolean;
-    hasAnswered: boolean;
-    hasVoted: boolean;
-    eliminatedRole?: Role; // Only set when eliminated
-  }[];
+  players: PublicPlayer[];
   currentQuestion?: {
     id: string;
     categoryLabel: string;
@@ -136,6 +152,8 @@ export interface PublicGameState {
     name: string;
     avatar: PlayerAvatar;
   };
+  nightCrimeRoomId?: MansionRoomId;
+  nightCrimeRoomName?: string;
   nightClue?: string;
   winner?: 'INVESTIGADORES' | 'ASSASSINO';
   killerPlayer?: {
@@ -176,7 +194,8 @@ export type ClientMessage =
   | { type: 'PLAYER_JOIN_ROOM'; roomCode: string; name: string; avatarId: string; playerId?: string }
   | { type: 'HOST_START_GAME' }
   | { type: 'PLAYER_ROLE_REVEALED' }
-  | { type: 'PLAYER_NIGHT_KILL'; targetPlayerId: string }
+  | { type: 'PLAYER_SELECT_ROOM'; roomId: MansionRoomId }
+  | { type: 'PLAYER_NIGHT_KILL'; targetPlayerId: string; crimeRoomId?: MansionRoomId }
   | { type: 'PLAYER_NIGHT_INVESTIGATE'; targetPlayerId: string }
   | { type: 'PLAYER_SUBMIT_ANSWER'; answer: string }
   | { type: 'PLAYER_SUBMIT_VOTE'; targetPlayerId: string }

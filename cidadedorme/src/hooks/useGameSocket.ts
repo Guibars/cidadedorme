@@ -117,6 +117,9 @@ export function useGameSocket() {
                 sound.triggerMorningVibrate();
               } else if (msg.sound === 'playKillStab') {
                 sound.playKillStab();
+              } else if (msg.sound === 'playKnifeSlash') {
+                sound.playKnifeSlash();
+                sound.triggerVictimDeathVibrate();
               }
               break;
 
@@ -402,7 +405,9 @@ export function useGameSocket() {
   const confirmVote = () => dispatchAction('CONFIRM_VOTE');
   const useDetective = (targetPlayerId: string) => dispatchAction('USE_DETECTIVE', { targetPlayerId });
   const useSabotage = (sabotageId: string) => dispatchAction('USE_SABOTAGE', { sabotageId });
-  const nightKill = (targetPlayerId: string) => dispatchAction('NIGHT_KILL', { targetPlayerId });
+  const nightKill = (targetPlayerId: string, crimeRoomId?: string) =>
+    dispatchAction('NIGHT_KILL', { targetPlayerId, crimeRoomId });
+  const selectRoom = (roomId: string) => dispatchAction('SELECT_ROOM', { roomId });
   const nightInvestigate = (targetPlayerId: string) => dispatchAction('NIGHT_INVESTIGATE', { targetPlayerId });
   const addBot = () => dispatchAction('ADD_BOT');
   const removePlayer = (targetId: string) => dispatchAction('REMOVE_PLAYER', { targetPlayerId: targetId });
@@ -447,6 +452,7 @@ export function useGameSocket() {
     useDetective,
     useSabotage,
     nightKill,
+    selectRoom,
     nightInvestigate,
     addBot,
     removePlayer,

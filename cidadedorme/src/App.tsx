@@ -56,6 +56,7 @@ export default function App() {
     removePlayer,
     revealRole,
     nightKill,
+    selectRoom,
     nightInvestigate,
     submitAnswer,
     submitVote,
@@ -127,15 +128,24 @@ export default function App() {
         )}
 
         {publicState.phase === 'ROLE_REVEAL' && (
-          <MobileRoleReveal player={myPlayer} onRevealComplete={revealRole} />
+          <MobileRoleReveal
+            player={myPlayer}
+            onRevealComplete={revealRole}
+            onSelectRoom={selectRoom}
+            readyCount={publicState.players.filter((p) => p.hasRevealedRole).length}
+            totalPlayers={publicState.players.length}
+          />
         )}
 
-        {publicState.phase === 'NIGHT_FALL' && privateData && (
+        {(publicState.phase === 'NIGHT_FALL' ||
+          publicState.phase === 'NIGHT_KILLER' ||
+          publicState.phase === 'NIGHT_DETECTIVE') && privateData && (
           <MobileNightAction
             privateData={privateData}
             publicState={publicState}
             onKill={nightKill}
             onInvestigate={nightInvestigate}
+            onSelectRoom={selectRoom}
           />
         )}
 
@@ -271,7 +281,9 @@ export default function App() {
               <TvRoleRevealWait state={publicState} onAdvance={advancePhase} />
             )}
 
-            {publicState.phase === 'NIGHT_FALL' && (
+            {(publicState.phase === 'NIGHT_FALL' ||
+              publicState.phase === 'NIGHT_KILLER' ||
+              publicState.phase === 'NIGHT_DETECTIVE') && (
               <TvNightFall state={publicState} onAdvance={advancePhase} />
             )}
 

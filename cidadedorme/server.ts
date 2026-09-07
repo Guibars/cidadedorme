@@ -176,7 +176,12 @@ async function startServer() {
         break;
       case 'NIGHT_KILL':
         if (playerId && payload.targetPlayerId) {
-          room.setNightKill(playerId, payload.targetPlayerId);
+          room.setNightKill(playerId, payload.targetPlayerId, payload.crimeRoomId);
+        }
+        break;
+      case 'SELECT_ROOM':
+        if (playerId && payload.roomId) {
+          room.setPlayerRoom(playerId, payload.roomId);
         }
         break;
       case 'NIGHT_INVESTIGATE':
@@ -373,7 +378,17 @@ async function startServer() {
             if (clientRoomCode && clientPlayerId && msg.targetPlayerId) {
               const room = gameManager.getRoom(clientRoomCode);
               if (room) {
-                room.setNightKill(clientPlayerId, msg.targetPlayerId);
+                room.setNightKill(clientPlayerId, msg.targetPlayerId, msg.crimeRoomId);
+              }
+            }
+            break;
+          }
+
+          case 'PLAYER_SELECT_ROOM': {
+            if (clientRoomCode && clientPlayerId && msg.roomId) {
+              const room = gameManager.getRoom(clientRoomCode);
+              if (room) {
+                room.setPlayerRoom(clientPlayerId, msg.roomId);
               }
             }
             break;

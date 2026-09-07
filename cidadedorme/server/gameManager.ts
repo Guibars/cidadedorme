@@ -10,8 +10,10 @@ import {
   Clue,
   ClientMessage,
   ServerMessage,
+  MansionRoomId,
 } from '../src/types';
 import { AVATARS, QUESTIONS_DATABASE, RANDOM_EVENTS_POOL, SABOTAGE_OPTIONS } from '../src/data/content';
+import { MANSION_ROOMS, getMansionRoom } from '../src/data/mansion';
 
 const BOT_NAMES = ['Eduardo', 'Marianne', 'Lucas', 'Pedro', 'Beatriz', 'Rafael'];
 
@@ -39,6 +41,8 @@ export class Room {
   public pendingSabotage: string | null = null;
   public nightVictimId: string | null = null;
   public nightVictim: { id: string; name: string; avatar: any } | null = null;
+  public nightCrimeRoomId: MansionRoomId | null = null;
+  public nightCrimeRoomName: string | null = null;
   public nightClue: string = '';
 
   constructor(code: string) {
@@ -47,6 +51,7 @@ export class Room {
 
   public addPlayer(id: string, name: string, avatarId: string, socket?: WebSocket, isBot: boolean = false): Player {
     const avatar = AVATARS.find((a) => a.id === avatarId) || AVATARS[this.players.size % AVATARS.length];
+    const defaultRoom = MANSION_ROOMS[this.players.size % MANSION_ROOMS.length].id;
     const player: Player = {
       id,
       name,
@@ -55,6 +60,7 @@ export class Room {
       isAlive: true,
       hasRevealedRole: false,
       connected: true,
+      currentRoomId: defaultRoom,
       hasUsedAbility: false,
       hasConfirmedVote: false,
       privateNotes: [],
@@ -72,6 +78,14 @@ export class Room {
     }
     this.broadcastState();
     return player;
+  }
+
+  public setPlayerRoom(playerId: string, roomId: MansionRoomId) {
+    const player = this.players.get(playerId);
+    if (!player || !player.isAlive) return;
+    player.currentRoomId = roomId;
+    this.broadcastState();
+    this.sendPrivateUpdate(playerId);
   }
 
   public removePlayer(playerId: string) {
@@ -97,6 +111,10 @@ export class Room {
     this.clues = [];
     this.winner = null;
     this.eliminatedPlayer = null;
+    this.nightVictimId = null;
+    this.nightVictim = null;
+    this.nightCrimeRoomId = null;
+    this.nightCrimeRoomName = null;
 
     // Assign roles randomly
     // 5 players: 1 Killer, 1 Detective, 3 Innocents
@@ -115,7 +133,8 @@ export class Room {
       shuffled[i].role = 'INOCENTE';
     }
 
-    playerList.forEach((p) => {
+    // Distribute players across the mansion rooms (Among Us style layout)
+    playerList.forEach((p, idx) => {
       p.isAlive = true;
       p.hasRevealedRole = false;
       p.hasUsedAbility = false;
@@ -123,6 +142,7 @@ export class Room {
       p.currentAnswer = undefined;
       p.votedTargetId = undefined;
       p.privateNotes = [];
+      p.currentRoomId = MANSION_ROOMS[idx % MANSION_ROOMS.length].id;
     });
 
     this.phase = 'INTRO';
@@ -133,24 +153,28 @@ export class Room {
     setTimeout(() => {
       if (this.phase === 'INTRO') {
         this.phase = 'ROLE_REVEAL';
-        this.timerSeconds = 7;
-        this.timerMax = 7;
+        // Give 60 seconds so players can read comfortably without getting rushed
+        this.timerSeconds = 60;
+        this.timerMax = 60;
         this.broadcastState();
         this.broadcastPrivateUpdates();
 
-        // Simulate bot reveals
+        // Simulate bots taking a few seconds to "read" their roles and click ready
         this.players.forEach((p) => {
           if (p.isBot) {
             setTimeout(() => {
-              p.hasRevealedRole = true;
-              this.broadcastState();
-            }, 1200 + Math.random() * 1200);
+              if (this.phase === 'ROLE_REVEAL') {
+                p.hasRevealedRole = true;
+                this.broadcastState();
+                this.checkAllRolesRevealed();
+              }
+            }, 3500 + Math.random() * 8000);
           }
         });
 
-        // Automatically start the night after 7 seconds
-        this.startTimer(7, () => {
-          this.startNightFall();
+        // Safe fallback timer: 60s
+        this.startTimer(60, () => {
+          this.startRoundFlow();
         });
       }
     }, 5000);
@@ -159,22 +183,40 @@ export class Room {
   }
 
   public checkAllRolesRevealed() {
-    const allRevealed = Array.from(this.players.values()).every((p) => !p.isAlive || p.hasRevealedRole);
+    const alivePlayers = this.getAlivePlayers();
+    const allRevealed = alivePlayers.length > 0 && alivePlayers.every((p) => p.hasRevealedRole);
+
     if (allRevealed && this.phase === 'ROLE_REVEAL') {
       if (this.timerInterval) clearInterval(this.timerInterval);
+      // Give a 2.5s graceful countdown so everyone can put their phones down before night falls
+      this.timerSeconds = 3;
+      this.timerMax = 3;
+      this.broadcastState();
+
       setTimeout(() => {
-        this.startNightFall();
-      }, 1000);
+        if (this.phase === 'ROLE_REVEAL') {
+          this.startRoundFlow();
+        }
+      }, 2500);
     }
   }
 
-  public startNightFall() {
+  public startRoundFlow() {
+    this.startNightKillerPhase();
+  }
+
+  // Turn 1: Assassin wakes up (with knife & room selection)
+  // Detective and Innocents SLEEP (eyes closed)
+  public startNightKillerPhase() {
     if (this.timerInterval) clearInterval(this.timerInterval);
-    this.phase = 'NIGHT_FALL';
-    this.timerSeconds = 20;
-    this.timerMax = 20;
+    this.phase = 'NIGHT_KILLER';
+    // Generous 30 seconds for the killer to plan and strike
+    this.timerSeconds = 30;
+    this.timerMax = 30;
     this.nightVictimId = null;
     this.nightVictim = null;
+    this.nightCrimeRoomId = null;
+    this.nightCrimeRoomName = null;
 
     // Reset night choices and votes
     this.players.forEach((p) => {
@@ -186,56 +228,107 @@ export class Room {
     this.broadcastPrivateUpdates();
     this.broadcastAudio('playNightFall');
 
-    // If killer is a bot, pick a random victim after 3-5 seconds
+    // If killer is a bot, pick a random victim after 7-12 seconds
     const killer = this.players.get(this.killerPlayerId || '');
     if (killer && killer.isBot && killer.isAlive) {
       setTimeout(() => {
-        if (this.phase === 'NIGHT_FALL') {
+        if (this.phase === 'NIGHT_KILLER') {
           const aliveTargets = this.getAlivePlayers().filter((p) => p.id !== killer.id);
           if (aliveTargets.length > 0) {
             const chosen = aliveTargets[Math.floor(Math.random() * aliveTargets.length)];
-            this.setNightKill(killer.id, chosen.id);
+            const chosenRoom = chosen.currentRoomId || MANSION_ROOMS[Math.floor(Math.random() * MANSION_ROOMS.length)].id;
+            this.setNightKill(killer.id, chosen.id, chosenRoom);
           }
         }
-      }, 3500 + Math.random() * 2000);
+      }, 7000 + Math.random() * 5000);
     }
 
-    // Start 20-second automatic timer
-    this.startTimer(20, () => {
-      this.startDayBreak();
+    // 30-second timer for killer turn -> then detective wakes up
+    this.startTimer(30, () => {
+      this.startNightDetectivePhase();
     });
   }
 
-  public setNightKill(killerId: string, targetPlayerId: string) {
-    if (this.phase !== 'NIGHT_FALL') return;
+  // Legacy fallback if needed
+  public startNightFall() {
+    this.startNightKillerPhase();
+  }
+
+  public setNightKill(killerId: string, targetPlayerId: string, crimeRoomId?: MansionRoomId) {
+    if (this.phase !== 'NIGHT_KILLER' && this.phase !== 'NIGHT_FALL') return;
     if (killerId !== this.killerPlayerId) return;
 
     const target = this.players.get(targetPlayerId);
     if (!target || !target.isAlive || target.id === killerId) return;
 
     this.nightVictimId = target.id;
+    this.nightCrimeRoomId = crimeRoomId || target.currentRoomId || 'kitchen';
+    this.nightCrimeRoomName = getMansionRoom(this.nightCrimeRoomId).name;
+
+    // Play knife slash sound and trigger private update
+    this.broadcastAudio('playKnifeSlash');
     this.broadcastPrivateUpdates();
 
-    // Small delay (3s) before transitioning to Day Break, for suspense and anti-snitching
+    // 3.5s delay to let the killer savor the stealth moment and return to bed
     setTimeout(() => {
-      if (this.phase === 'NIGHT_FALL') {
+      if (this.phase === 'NIGHT_KILLER' || this.phase === 'NIGHT_FALL') {
         if (this.timerInterval) clearInterval(this.timerInterval);
-        this.startDayBreak();
+        this.startNightDetectivePhase();
       }
-    }, 3000);
+    }, 3500);
+  }
+
+  // Turn 2: Detective wakes up to investigate
+  // Assassin and Innocents SLEEP (eyes closed)
+  public startNightDetectivePhase() {
+    if (this.timerInterval) clearInterval(this.timerInterval);
+
+    const detective = Array.from(this.players.values()).find(
+      (p) => p.role === 'DETETIVE' && p.isAlive
+    );
+
+    // If detective is alive, start detective investigation turn!
+    if (detective) {
+      this.phase = 'NIGHT_DETECTIVE';
+      this.timerSeconds = 25;
+      this.timerMax = 25;
+
+      this.broadcastState();
+      this.broadcastPrivateUpdates();
+
+      // If detective is a bot, pick a random suspect after 5-8s
+      if (detective.isBot) {
+        setTimeout(() => {
+          if (this.phase === 'NIGHT_DETECTIVE') {
+            const suspects = this.getAlivePlayers().filter((p) => p.id !== detective.id);
+            if (suspects.length > 0) {
+              const target = suspects[Math.floor(Math.random() * suspects.length)];
+              this.useDetectiveAbility(detective.id, target.id);
+            }
+          }
+        }, 5000 + Math.random() * 3000);
+      }
+
+      this.startTimer(25, () => {
+        this.startDayBreak();
+      });
+    } else {
+      // Detective is already eliminated or not playing, advance straight to day break
+      this.startDayBreak();
+    }
   }
 
   public startDayBreak() {
     if (this.timerInterval) clearInterval(this.timerInterval);
     this.phase = 'DAY_BREAK';
-    this.timerSeconds = 5;
-    this.timerMax = 5;
+    this.timerSeconds = 6;
+    this.timerMax = 6;
 
     this.broadcastState();
     this.broadcastPrivateUpdates();
     this.broadcastAudio('playDayBreak');
 
-    this.startTimer(5, () => {
+    this.startTimer(6, () => {
       this.revealCrimeScene();
     });
   }
@@ -243,8 +336,8 @@ export class Room {
   public revealCrimeScene() {
     if (this.timerInterval) clearInterval(this.timerInterval);
     this.phase = 'CRIME_SCENE';
-    this.timerSeconds = 9;
-    this.timerMax = 9;
+    this.timerSeconds = 12;
+    this.timerMax = 12;
 
     const killer = this.players.get(this.killerPlayerId || '');
 
@@ -258,13 +351,19 @@ export class Room {
           avatar: victim.avatar,
         };
 
-        // Generate contextual night clue
+        const roomName = this.nightCrimeRoomName || 'Cozinha da Mansão';
+        const crimeRoom = getMansionRoom(this.nightCrimeRoomId || 'kitchen');
+
+        // Generate contextual night clue linking to the mansion room
         const clueOptions = [
-          `Pista na cena: Uma testemunha avistou uma sombra saindo em silêncio.`,
-          killer ? `Pista na cena: O assassino tem a inicial "${killer.name.charAt(0).toUpperCase()}".` : `Pista na cena: Um bilhete rasgado foi encontrado.`,
-          killer ? `Pista na cena: O assassino escolheu o avatar com tema "${killer.avatar.name}".` : `Pista na cena: Foi encontrada uma luva escura perto do corpo.`,
-          `Pista na cena: A vítima tentou resistir antes do último suspiro.`,
+          `Cena do Crime no(a) ${roomName}: O corpo de ${victim.name} foi encontrado com ferimentos de faca.`,
+          `Pista na cena (${roomName}): Uma faca suja e uma pegada apressada foram deixadas no chão.`,
+          killer
+            ? `Pista na cena: Testemunhas ouviram passos rápidos saindo do(a) ${roomName} rumo ao quarto de alguém com a inicial "${killer.name.charAt(0).toUpperCase()}".`
+            : `Pista na cena: Uma sombra misteriosa fugiu em silêncio pela porta lateral.`,
+          `Pista de álibi: Apenas quem estava em cômodos próximos ao(à) ${roomName} ouviu o barulho.`,
         ];
+
         this.nightClue = clueOptions[Math.floor(Math.random() * clueOptions.length)];
         this.clues.push({
           id: `night-clue-${Date.now()}`,
@@ -275,7 +374,7 @@ export class Room {
       }
     } else {
       this.nightVictim = null;
-      this.nightClue = 'Ninguém foi morto nesta noite... A cidade teve sorte!';
+      this.nightClue = 'Ninguém foi morto nesta noite... A cidade dormiu em paz!';
     }
 
     this.broadcastState();
@@ -301,14 +400,10 @@ export class Room {
       return;
     }
 
-    // Automatically transition to Discussion after 9s
-    this.startTimer(9, () => {
+    // After 12s of crime scene and mansion map reveal, transition to Discussion
+    this.startTimer(12, () => {
       this.startDiscussionPhase();
     });
-  }
-
-  public startRoundFlow() {
-    this.startNightFall();
   }
 
   public startQuestionPhase() {
@@ -397,8 +492,9 @@ export class Room {
   public startDiscussionPhase() {
     if (this.timerInterval) clearInterval(this.timerInterval);
     this.phase = 'DISCUSSION';
-    this.timerSeconds = 45;
-    this.timerMax = 45;
+    // Extended discussion time: 75 seconds for deep investigation and alibis
+    this.timerSeconds = 75;
+    this.timerMax = 75;
 
     // Generate dynamic clue for this round
     this.generateRoundClue();
@@ -406,7 +502,7 @@ export class Room {
     this.broadcastState();
     this.broadcastPrivateUpdates();
 
-    this.startTimer(60, () => {
+    this.startTimer(75, () => {
       this.startVotingPhase();
     });
   }
@@ -467,8 +563,9 @@ export class Room {
   public startVotingPhase() {
     if (this.timerInterval) clearInterval(this.timerInterval);
     this.phase = 'VOTING';
-    this.timerSeconds = 45;
-    this.timerMax = 45;
+    // 55 seconds so players have ample time to discuss and confirm their votes
+    this.timerSeconds = 55;
+    this.timerMax = 55;
     this.activeVotesCount = 0;
 
     this.players.forEach((p) => {
@@ -479,7 +576,7 @@ export class Room {
     this.broadcastState();
     this.broadcastPrivateUpdates();
 
-    this.startTimer(45, () => {
+    this.startTimer(55, () => {
       this.tallyVotesAndReveal();
     });
 
@@ -649,6 +746,12 @@ export class Room {
 
     // Otherwise, advance to next round!
     this.round++;
+    this.players.forEach((p) => {
+      p.hasUsedAbility = false;
+      p.hasConfirmedVote = false;
+      p.votedTargetId = undefined;
+      p.currentAnswer = undefined;
+    });
     this.startRoundFlow();
   }
 
@@ -684,6 +787,16 @@ export class Room {
         isKiller,
       },
     });
+
+    // If used during NIGHT_DETECTIVE, give detective 4s to read report, then transition to DAY_BREAK!
+    if (this.phase === 'NIGHT_DETECTIVE') {
+      setTimeout(() => {
+        if (this.phase === 'NIGHT_DETECTIVE') {
+          if (this.timerInterval) clearInterval(this.timerInterval);
+          this.startDayBreak();
+        }
+      }, 4000);
+    }
   }
 
   public useKillerSabotage(killerId: string, sabotageId: string) {
@@ -746,6 +859,7 @@ export class Room {
       isAlive: p.isAlive,
       hasRevealedRole: p.hasRevealedRole,
       connected: p.connected,
+      currentRoomId: p.currentRoomId,
       hasAnswered: p.currentAnswer !== undefined,
       hasVoted: p.hasConfirmedVote,
       eliminatedRole: !p.isAlive ? p.role : undefined,
@@ -814,6 +928,8 @@ export class Room {
       eliminatedPlayerId: this.eliminatedPlayer?.id,
       eliminatedPlayer: this.eliminatedPlayer || undefined,
       nightVictim: this.nightVictim || undefined,
+      nightCrimeRoomId: this.nightCrimeRoomId || undefined,
+      nightCrimeRoomName: this.nightCrimeRoomName || undefined,
       nightClue: this.nightClue || undefined,
       winner: this.winner || undefined,
       killerPlayer:
@@ -876,7 +992,7 @@ export class Room {
         !player.hasUsedAbility &&
         player.isAlive &&
         (player.role === 'DETETIVE' || player.role === 'ASSASSINO') &&
-        (this.phase === 'DISCUSSION' || this.phase === 'NIGHT_FALL'),
+        (this.phase === 'DISCUSSION' || this.phase === 'NIGHT_KILLER' || this.phase === 'NIGHT_DETECTIVE' || this.phase === 'NIGHT_FALL'),
       availableSabotages: player.role === 'ASSASSINO' ? SABOTAGE_OPTIONS : undefined,
       ...overrides,
     };
@@ -930,6 +1046,10 @@ export class Room {
   public advancePhase() {
     if (this.phase === 'ROLE_REVEAL') {
       this.startRoundFlow();
+    } else if (this.phase === 'NIGHT_KILLER') {
+      this.startNightDetectivePhase();
+    } else if (this.phase === 'NIGHT_DETECTIVE') {
+      this.startDayBreak();
     } else if (this.phase === 'ROUND_QUESTION') {
       this.revealAnswers();
     } else if (this.phase === 'DISCUSSION') {

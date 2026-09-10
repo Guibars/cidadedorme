@@ -49,10 +49,10 @@ export function TvVerdict({ state }: TvVerdictProps) {
       <div className="flex-1 w-full max-w-4xl mx-auto px-6 py-12 flex flex-col justify-center items-center text-center">
         <div className="p-12 rounded-3xl bg-neutral-900/80 border border-neutral-800 shadow-2xl">
           <h2 className="text-4xl md:text-5xl font-black uppercase font-['Cinzel'] text-neutral-200 mb-4">
-            EMPATE NA VOTAÇÃO!
+            SEM ACUSAÇÃO CONFIRMADA
           </h2>
           <p className="text-base text-neutral-400 max-w-md mx-auto">
-            Os votos se dividiram igualmente. Nenhum jogador foi eliminado nesta rodada.
+            O detetive não confirmou uma acusação a tempo. Ninguém foi preso nesta rodada.
           </p>
         </div>
       </div>
@@ -70,7 +70,7 @@ export function TvVerdict({ state }: TvVerdictProps) {
           {eliminated.name}
         </h2>
         <p className="text-sm md:text-base text-neutral-400 mt-2">
-          Foi o mais votado pelos demais jogadores.
+          Foi a pessoa acusada pelo detetive após ouvir os relatos.
         </p>
       </div>
 

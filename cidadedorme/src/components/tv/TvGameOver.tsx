@@ -134,7 +134,7 @@ export function TvGameOver({ state, onRestart }: TvGameOverProps) {
               {stats.mostVoted?.name || 'Ninguém'}
             </div>
             <div className="text-xs text-neutral-500 mt-1">
-              {stats.mostVoted?.count || 0} votos recebidos
+              {stats.mostVoted?.count || 0} acusações recebidas
             </div>
           </div>
 

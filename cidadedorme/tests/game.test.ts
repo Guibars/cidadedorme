@@ -51,38 +51,39 @@ test('attacks require proximity, only once per night; detective can be a victim'
  const k=r.players.get(r.killerPlayerId!)!,d=r.players.get(r.detectivePlayerId!)!;
  k.x=100;k.y=100;d.x=700;d.y=400;
  assert.ok(!r.setNightKill(k.id,d.id));
- d.x=140;d.y=100;assert.equal(r.setNightKill(k.id,d.id),true);
+ t.mock.timers.tick(12000);d.x=140;d.y=100;assert.equal(r.setNightKill(k.id,d.id),true);
  assert.equal(r.winner,null);assert.equal(r.getPrivateData(d.id)?.isNightVictim,true);
  assert.equal(r.getPublicState().lastStabLocation,undefined);
  assert.ok(!r.setNightKill(k.id,[...r.players.keys()].find(id=>id!==k.id&&id!==d.id)!));
- r.revealCrimeScene();assert.equal(d.isAlive,false);assert.equal(r.phase,'CRIME_SCENE');
+ r.revealCrimeScene();assert.equal(d.isAlive,false);assert.equal(r.phase,'CRIME_SCENE');assert.notEqual(r.detectivePlayerId,d.id);assert.equal(r.players.get(r.detectivePlayerId!)?.role,'DETETIVE');
 });
 test('private investigation survives refresh, is limited and never broadcasts the answer',t=>{
  const r=setup(t);r.startGame();r.startNightKillerPhase();
  const d=r.detectivePlayerId!,k=r.killerPlayerId!;
- r.useDetectiveAbility(d,k);assert.equal(r.getPrivateData(d)?.detectiveInvestigationResult?.isKiller,true);
+ r.useDetectiveAbility(d,k);const report=r.getPrivateData(d)?.detectiveInvestigationResult;assert.equal(report?.targetName,r.players.get(k)?.name);assert.ok(report?.resultText);assert.ok(!('isKiller' in report!));
  assert.equal(r.getPublicState().detectiveAccusation,undefined);
  const other=[...r.players.keys()].find(id=>id!==d&&id!==k)!;
- r.useDetectiveAbility(d,other);assert.equal(r.getPrivateData(d)?.detectiveInvestigationResult?.isKiller,true);
+ r.useDetectiveAbility(d,other);assert.deepEqual(r.getPrivateData(d)?.detectiveInvestigationResult,report);
  assert.equal(r.getPrivateData(other)?.detectiveInvestigationResult,undefined);
 });
-test('all living roles vote; only confirmed votes count; votes are not revealed early',t=>{
- const r=setup(t);r.startGame();r.startVotingPhase();const ids=[...r.players.keys()];
- r.confirmVote(ids[0]);assert.equal(r.activeVotesCount,0);
- for(let i=0;i<ids.length;i++){r.submitVote(ids[i],ids[(i+1)%ids.length]);r.confirmVote(ids[i]);}
- assert.equal(r.activeVotesCount,5);assert.equal(r.getPublicState().revealedVotes.length,0);
- r.confirmVote(ids[0]);assert.equal(r.activeVotesCount,5);
- t.mock.timers.tick(1000);assert.equal(r.phase,'VOTE_REVEAL');
+test('only the living detective can accuse; confirmation is required and idempotent',t=>{
+ const r=setup(t);r.startGame();r.startVotingPhase();
+ const detective=r.detectivePlayerId!,killer=r.killerPlayerId!;
+ for(const p of r.players.values())if(p.id!==detective){r.submitVote(p.id,detective);r.confirmVote(p.id);assert.equal(p.votedTargetId,undefined);}
+ assert.equal(r.activeVotesCount,0);
+ r.submitVote(detective,killer);assert.equal(r.activeVotesCount,0);
+ r.confirmVote(detective);r.confirmVote(detective);assert.equal(r.activeVotesCount,1);
+ assert.equal(r.getPublicState().revealedVotes.length,0);
+ t.mock.timers.tick(1000);assert.equal(r.phase,'VOTE_REVEAL');assert.equal(r.revealedVotes.length,1);
  const votes=r.revealedVotes.length;r.tallyVotesAndReveal();assert.equal(r.revealedVotes.length,votes);
- for(let i=0;i<5;i++)t.mock.timers.tick(2500);t.mock.timers.tick(3000);assert.equal(r.phase,'VERDICT');assert.equal(r.eliminatedPlayer,null);
 });
 test('an unconfirmed vote is excluded from tally',t=>{
- const r=setup(t);r.startGame();r.startVotingPhase();r.submitVote('p0','p1');r.tallyVotesAndReveal();assert.equal(r.revealedVotes.length,0);
+ const r=setup(t);r.startGame();r.startVotingPhase();r.submitVote(r.detectivePlayerId!,r.killerPlayerId!);r.tallyVotesAndReveal();assert.equal(r.revealedVotes.length,0);
 });
 test('3-player game still gives survivors a chance to debate and vote',t=>{
  const r=setup(t,3);r.startGame();r.startNightKillerPhase();
  const k=r.players.get(r.killerPlayerId!)!,v=[...r.players.values()].find(p=>p.id!==k.id)!;k.x=100;k.y=100;v.x=130;v.y=100;
- r.setNightKill(k.id,v.id);r.revealCrimeScene();assert.equal(r.phase,'CRIME_SCENE');
+ t.mock.timers.tick(12000);r.setNightKill(k.id,v.id);r.revealCrimeScene();assert.equal(r.phase,'CRIME_SCENE');
  t.mock.timers.tick(12000);assert.equal(r.phase,'ROUND_QUESTION');
 });
 test('restart cancels delayed transitions and clears private round state',t=>{

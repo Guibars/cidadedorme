@@ -72,7 +72,12 @@ async function startServer() {
       }
       case 'SELECT_ROOM': room.setPlayerRoom(playerId, p.roomId); break;
       case 'MOVE_PLAYER': room.movePlayer(playerId, p.x, p.y); break;
-      case 'NIGHT_KILL': if (!room.setNightKill(playerId, p.targetPlayerId)) throw new Error('Aproxime-se de uma vítima viva para atacar.'); break;
+      case 'ASK_BOT': room.askBot(playerId, p.botId, p.topic); break;
+      case 'TASK_INPUT': room.interactTask(playerId, p.taskId, p.symbol); break;
+      case 'RESTORE_POWER': room.restorePower(playerId); break;
+      case 'REPORT_BODY': room.reportBody(playerId); break;
+      case 'CALL_MEETING': room.callMeeting(playerId); break;
+      case 'NIGHT_KILL': if (!room.setNightKill(playerId, p.targetPlayerId)) throw new Error('Aguarde o preparo do ataque e aproxime-se de uma vítima viva.'); break;
       case 'NIGHT_INVESTIGATE': case 'USE_DETECTIVE': room.useDetectiveAbility(playerId, p.targetPlayerId); break;
       case 'SUBMIT_ANSWER': room.submitAnswer(playerId, p.answer); break;
       case 'SUBMIT_VOTE': room.submitVote(playerId, p.targetPlayerId); break;

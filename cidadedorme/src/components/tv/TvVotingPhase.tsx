@@ -8,7 +8,7 @@ interface TvVotingPhaseProps {
 
 export function TvVotingPhase({ state, onAdvance }: TvVotingPhaseProps) {
   const votedCount = state.activeVotesCount;
-  const aliveCount = state.players.filter(p => p.isAlive).length;
+  const aliveCount = 1;
   const allVoted = votedCount >= aliveCount;
 
   return (
@@ -17,13 +17,13 @@ export function TvVotingPhase({ state, onAdvance }: TvVotingPhaseProps) {
       <div>
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-bold uppercase tracking-wider mb-4">
           <Vote className="w-3.5 h-3.5" />
-          O JULGAMENTO DO GRUPO
+          A ACUSAÇÃO DO DETETIVE
         </div>
         <h2 className="text-4xl md:text-6xl font-black uppercase tracking-wider font-['Cinzel'] text-neutral-100">
           QUEM SERÁ PRESO?
         </h2>
         <p className="mt-3 text-base md:text-lg text-neutral-400 max-w-xl mx-auto">
-          Todos os sobreviventes votam no celular. Em quem você confia?
+          {state.detectiveName || "O detetive"} decide no celular. Os outros convidados apresentam seus relatos e sua defesa.
         </p>
       </div>
 
@@ -38,7 +38,7 @@ export function TvVotingPhase({ state, onAdvance }: TvVotingPhaseProps) {
         <p className="text-sm text-neutral-400 mt-3 font-medium">
           {allVoted
             ? 'A decisão foi tomada. Preparando revelação...'
-            : 'Aguardando os votos secretos do grupo…'}
+            : 'Aguardando a acusação do detetive…'}
         </p>
       </div>
 
@@ -56,7 +56,7 @@ export function TvVotingPhase({ state, onAdvance }: TvVotingPhaseProps) {
               : 'bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border border-neutral-700 cursor-pointer'
           }`}
         >
-          <span>{allVoted ? 'Iniciar Revelação' : 'Encerrar Votação'}</span>
+          <span>{allVoted ? 'Iniciar Revelação' : 'Encerrar prazo'}</span>
           <ArrowRight className="w-3.5 h-3.5" />
         </button>
       </div>

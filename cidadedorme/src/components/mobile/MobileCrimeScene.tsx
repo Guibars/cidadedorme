@@ -16,7 +16,7 @@ export function MobileCrimeScene({ player, state }: MobileCrimeSceneProps) {
   useEffect(() => {
     if (isVictim) {
       sound.triggerVictimDeathVibrate();
-      sound.playKillStab();
+
     } else {
       sound.triggerVibrate(60);
     }

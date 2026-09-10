@@ -4,7 +4,7 @@ import type { PublicPlayer, MansionRoomId, ForensicEvidence } from '../../types'
 import { MANSION_ROOMS, MANSION_ROOM_BOUNDS, getRoomAtPosition, getRoomCenter } from '../../data/mansion';
 import { canWalkSegment, findMansionPath, stepTowards, type Point } from '../../data/navigation';
 interface Props {
-  players: PublicPlayer[]; currentPlayerId?: string; isKiller?: boolean; isNight?: boolean; canMove?: boolean;
+  blackout?: boolean; players: PublicPlayer[]; currentPlayerId?: string; isKiller?: boolean; isNight?: boolean; canMove?: boolean;
   lastStabLocation?: {x:number;y:number;victimId?:string;victimName?:string;roomId?:MansionRoomId} | null;
   forensicEvidence?: ForensicEvidence | null; highlightRoomId?: MansionRoomId | null; victimPlayerId?: string | null;
   onMove?: (x:number,y:number,roomId:MansionRoomId)=>void;
@@ -90,7 +90,7 @@ export function Mansion3DGridMap(props: Props) {
         if(mapImage.current)ctx.drawImage(mapImage.current,0,0,800,500);
         ctx.fillStyle='rgba(4,12,18,0.18)';ctx.fillRect(0,0,800,500);
         if(p.isNight && p.currentPlayerId) {
-          const light=ctx.createRadialGradient(pos.x,pos.y,55,pos.x,pos.y,210);
+          const light=ctx.createRadialGradient(pos.x,pos.y,p.blackout?20:55,pos.x,pos.y,p.blackout?90:210);
           light.addColorStop(0,'rgba(2,8,13,0)');light.addColorStop(1,'rgba(2,8,13,.78)');ctx.fillStyle=light;ctx.fillRect(0,0,800,500);
         }
         for(const r of MANSION_ROOMS) {
@@ -112,7 +112,7 @@ export function Mansion3DGridMap(props: Props) {
           const prior=remote.current.get(player.id)??target;
           const point=self?pos:{x:prior.x+(target.x-prior.x)*Math.min(1,dt*14),y:prior.y+(target.y-prior.y)*Math.min(1,dt*14)};
           remote.current.set(player.id,point);
-          if(p.isNight&&p.currentPlayerId&&!self&&Math.hypot(point.x-pos.x,point.y-pos.y)>170)continue;
+          if(p.isNight&&p.currentPlayerId&&!self&&(Math.hypot(point.x-pos.x,point.y-pos.y)>(p.blackout?75:170)||!canWalkSegment(pos,point)))continue;
           ctx.save();ctx.translate(point.x,point.y);
           ctx.shadowColor='#000';ctx.shadowBlur=8;ctx.shadowOffsetY=3;
           ctx.fillStyle=player.isAlive?player.avatar.color:'#485058';ctx.beginPath();ctx.arc(0,0,self?13:11,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;ctx.shadowOffsetY=0;
@@ -122,8 +122,8 @@ export function Mansion3DGridMap(props: Props) {
           ctx.fillStyle='#081218e8';ctx.beginPath();ctx.roundRect(-width/2,16,width,17,3);ctx.fill();ctx.fillStyle=self?'#ead19d':'#fff';ctx.fillText(label,0,28);
           ctx.restore();
         }
-        if(p.lastStabLocation && !p.isNight) {
-          const {x,y}=p.lastStabLocation;ctx.strokeStyle='#ff6370';ctx.lineWidth=2;ctx.beginPath();ctx.arc(x,y,22,0,Math.PI*2);ctx.stroke();
+        if(p.lastStabLocation) {
+          const {x,y}=p.lastStabLocation;ctx.strokeStyle='#ff6370';ctx.lineWidth=2;ctx.beginPath();ctx.arc(x,y,22,0,Math.PI*2);ctx.stroke();ctx.font='bold 24px system-ui';ctx.fillStyle='#ff6370';ctx.fillText('×',x,y+8);
         }
       }
       frame=requestAnimationFrame(draw);

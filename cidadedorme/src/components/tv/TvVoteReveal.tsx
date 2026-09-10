@@ -5,14 +5,6 @@ interface TvVoteRevealProps {
   state: PublicGameState;
 }
 
-const STEP_LABELS = [
-  'PRIMEIRO VOTO…',
-  'SEGUNDO VOTO…',
-  'TERCEIRO VOTO…',
-  'QUARTO VOTO…',
-  'QUINTO VOTO…',
-];
-
 export function TvVoteReveal({ state }: TvVoteRevealProps) {
   const revealedVotes = state.revealedVotes || [];
   const currentStep = state.voteRevealStep;
@@ -30,7 +22,7 @@ export function TvVoteReveal({ state }: TvVoteRevealProps) {
       <div>
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs font-bold uppercase tracking-wider mb-4">
           <Eye className="w-3.5 h-3.5" />
-          APURAÇÃO DOS VOTOS
+          ACUSAÇÃO DO DETETIVE
         </div>
         <h2 className="text-3xl md:text-5xl font-black uppercase tracking-wide font-['Cinzel'] text-neutral-100">
           QUEM FOI APONTADO?
@@ -45,7 +37,7 @@ export function TvVoteReveal({ state }: TvVoteRevealProps) {
             className="p-10 md:p-14 rounded-3xl bg-neutral-900/80 border-2 border-rose-500/50 backdrop-blur-2xl shadow-[0_0_60px_rgba(225,29,72,0.3)] animate-in zoom-in-95 duration-500 relative overflow-hidden"
           >
             <div className="text-sm font-bold uppercase tracking-widest text-neutral-400 mb-2 font-mono">
-              {STEP_LABELS[currentStep - 1] || `VOTO NÚMERO ${currentStep}…`}
+              A PESSOA ACUSADA É…
             </div>
 
             <div className="text-4xl md:text-6xl font-black text-rose-400 uppercase tracking-wider font-['Cinzel'] my-4 drop-shadow-[0_0_20px_rgba(244,63,94,0.6)]">
@@ -53,12 +45,12 @@ export function TvVoteReveal({ state }: TvVoteRevealProps) {
             </div>
 
             <div className="text-xs text-neutral-400 font-medium">
-              Votado por: <span className="text-neutral-200 font-semibold">{currentVote.voterName}</span>
+              Acusado por: <span className="text-neutral-200 font-semibold">{currentVote.voterName}</span>
             </div>
           </div>
         ) : (
           <div className="p-10 rounded-3xl bg-neutral-900/40 border border-neutral-800 text-neutral-400 animate-pulse">
-            Abrindo a urna dos votos...
+            {state.activeVotesCount ? 'Abrindo a acusação…' : 'Nenhuma acusação foi confirmada.'}
           </div>
         )}
 
@@ -71,14 +63,14 @@ export function TvVoteReveal({ state }: TvVoteRevealProps) {
             >
               <Award className="w-4 h-4 text-amber-400" />
               <span>{name}:</span>
-              <span className="text-rose-400 font-mono text-base font-black">{count} {count === 1 ? 'voto' : 'votos'}</span>
+              <span className="text-rose-400 font-mono text-base font-black">Acusado</span>
             </div>
           ))}
         </div>
       </div>
 
       <div className="text-xs text-neutral-500 font-medium">
-        Revelando voto a voto... Aguarde o veredito final
+        Aguardem o veredito da acusação oficial
       </div>
     </div>
   );

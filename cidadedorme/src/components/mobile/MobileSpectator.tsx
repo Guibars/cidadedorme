@@ -36,7 +36,7 @@ export function MobileSpectator({ player, state, onLeaveRoom }: MobileSpectatorP
 
         {state.phase === 'VOTE_REVEAL' && (
           <p className="text-xs text-neutral-400 max-w-xs mx-auto">
-            Os votos da rodada estão sendo abertos voto a voto no telão agora!
+            A acusação do detetive está sendo revelada no telão!
           </p>
         )}
 

@@ -29,6 +29,7 @@ import { MobileVoting } from './components/mobile/MobileVoting';
 import { MobileSpectator } from './components/mobile/MobileSpectator';
 
 import { Smartphone, Tv, ExternalLink, Sun, Eye } from 'lucide-react';
+import { GameAtmosphere } from './components/common/GameAtmosphere';
 import { sound } from './utils/audio';
 
 export default function App() {
@@ -64,7 +65,7 @@ export default function App() {
     submitVote,
     confirmVote,
     useDetective,
-    useSabotage,
+    useSabotage, askBot, interactTask, restorePower, reportBody, callMeeting,
     leaveRoom,
   } = useGameSocket();
 
@@ -105,6 +106,7 @@ export default function App() {
     // Inside a room as player
     return (
       <div className="mobile-shell">
+        <GameAtmosphere state={publicState} privateData={privateData} mobile/>
         {!isConnected && <div className="connection-banner" role="status">Reconectando… mantenha esta tela aberta.</div>}
         {errorMessage && <div className="error-banner" role="alert">{errorMessage}</div>}
         {!myPlayer.isAlive && publicState.phase !== 'LOBBY' ? <MobileSpectator player={myPlayer} state={publicState} onLeaveRoom={leaveRoom}/> : <>
@@ -142,10 +144,11 @@ export default function App() {
             onKill={nightKill}
             onMove={movePlayer}
             onInvestigate={nightInvestigate}
+            onTask={interactTask} onRepair={restorePower} onReport={reportBody} onMeeting={callMeeting} onBlackout={() => useSabotage("BLACKOUT")}
           />
         )}
 
-        {publicState.phase === 'DAY_BREAK' && <MobileDayBreak />}
+        {publicState.phase === 'DAY_BREAK' && <MobileDayBreak reason={publicState.nightStatus?.meetingReason}/>}
 
         {publicState.phase === 'CRIME_SCENE' && (
           <MobileCrimeScene player={myPlayer} state={publicState} />
@@ -185,7 +188,7 @@ export default function App() {
             state={publicState}
             privateData={privateData}
             onUseDetective={useDetective}
-            onUseSabotage={useSabotage}
+            onUseSabotage={useSabotage} onAskBot={askBot}
           />
         )}
 
@@ -225,6 +228,7 @@ export default function App() {
         </div>
       </nav>
       {errorMessage && <div className="error-banner" role="alert">{errorMessage}</div>}
+      <GameAtmosphere state={publicState}/>
       <main className="app-main">
         {!publicState ? (
           <TvHome

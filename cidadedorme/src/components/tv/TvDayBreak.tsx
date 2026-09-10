@@ -9,7 +9,7 @@ interface TvDayBreakProps {
 
 export function TvDayBreak({ state }: TvDayBreakProps) {
   useEffect(() => {
-    sound.playDayBreak();
+    if (!state.nightStatus?.meetingReason) sound.playDayBreak();
   }, []);
 
   return (
@@ -24,18 +24,18 @@ export function TvDayBreak({ state }: TvDayBreakProps) {
         {/* Morning Chime Badge */}
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-400 text-xs font-black uppercase tracking-[0.25em] mb-5">
           <Sun className="w-4 h-4 text-amber-400 animate-spin" style={{ animationDuration: '10s' }} />
-          <span>AMANHECER NA CIDADE</span>
+          <span>{state.nightStatus?.meetingReason?"REUNIÃO CONVOCADA":"AMANHECER NA CIDADE"}</span>
         </div>
 
         {/* Title */}
         <h1 className="text-6xl md:text-8xl font-black uppercase font-['Bebas_Neue',sans-serif] tracking-widest text-white drop-shadow-[0_4px_30px_rgba(245,158,11,0.4)]">
-          TODOS ACORDEM!
+          {state.nightStatus?.meetingReason?"TODOS PARA A SALA!":"A NOITE TERMINOU!"}
         </h1>
 
         <p className="text-xl md:text-3xl text-neutral-200 font-semibold max-w-2xl mx-auto mt-4 leading-relaxed">
-          Abram os olhos e olhem ao redor.
+          {state.nightStatus?.meetingReason || "Levantem os olhos dos celulares. Vamos descobrir o que aconteceu."}
           <br />
-          <span className="text-amber-400">A noite terminou...</span> Mas nem todos estão sãos e salvos.
+          <span className="text-amber-400">Preparem seus relatos.</span> Alguém pode ter uma história para esconder.
         </p>
 
         {/* Eye Opening Icon Animation */}

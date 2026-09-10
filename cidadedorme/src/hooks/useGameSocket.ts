@@ -171,6 +171,9 @@ export function useGameSocket() {
     nightInvestigate: (targetPlayerId: string) => dispatch('NIGHT_INVESTIGATE', { targetPlayerId }),
     submitAnswer: (answer: string) => dispatch('SUBMIT_ANSWER', { answer }), submitVote: (targetPlayerId: string) => dispatch('SUBMIT_VOTE', { targetPlayerId }),
     confirmVote: () => dispatch('CONFIRM_VOTE'), useDetective: (targetPlayerId: string) => dispatch('USE_DETECTIVE', { targetPlayerId }),
+    askBot: (botId: string, topic: 'ALIBI' | 'ENCOUNTERS') => dispatch('ASK_BOT', { botId, topic }),
+    interactTask: (taskId: string, symbol: number) => dispatch('TASK_INPUT', { taskId, symbol }),
+    restorePower: () => dispatch('RESTORE_POWER'), reportBody: () => dispatch('REPORT_BODY'), callMeeting: () => dispatch('CALL_MEETING'),
     useSabotage: (sabotageId: string) => dispatch('USE_SABOTAGE', { sabotageId }),
   };
 }

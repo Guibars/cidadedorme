@@ -50,19 +50,21 @@ export function MobileVoting({
     sound.playClick();
   };
 
+  if (player.role !== 'DETETIVE' || !player.isAlive) return <div className="mobile-night eliminated-screen"><ShieldCheck size={44}/><span className="eyebrow">A DECISÃO É DO DETETIVE</span><h1>Seu relato faz a diferença.</h1><p>{state.detectiveName || 'O detetive'} está escolhendo quem acusar. Você pode responder às perguntas e defender sua versão em voz alta.</p><span className="small-clock">{state.timerSeconds}s para a decisão</span></div>;
+
   return (
     <div className="min-h-screen w-full flex flex-col justify-between p-5 max-w-md mx-auto bg-neutral-950 text-neutral-100">
       {/* Top Banner */}
       <div className="pt-2 text-center">
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-bold uppercase tracking-wider mb-2">
           <ShieldCheck className="w-3.5 h-3.5" />
-          SEU VOTO É SECRETO
+          SÓ VOCÊ PODE ACUSAR
         </div>
         <h2 className="text-2xl font-black uppercase font-['Cinzel'] tracking-wide text-neutral-100">
           Quem você vai prender?
         </h2>
         <p className="text-xs text-neutral-400 mt-1">
-          Escolha um suspeito. Todos os sobreviventes têm um voto.
+          Ouça o grupo e escolha um suspeito. Sua acusação é a única decisão oficial.
         </p>
       </div>
 
@@ -120,16 +122,16 @@ export function MobileVoting({
                 : 'bg-neutral-900 text-neutral-600 border border-neutral-800 cursor-not-allowed'
             }`}
           >
-            <span>VOTAR EM {selectedPlayer?.name || 'UM SUSPEITO'}</span>
+            <span>ACUSAR {selectedPlayer?.name || 'UM SUSPEITO'}</span>
           </button>
         ) : (
           <div className="mt-4 p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/50 text-center animate-in zoom-in-95">
             <div className="flex items-center justify-center gap-2 text-emerald-400 font-bold text-sm mb-1">
               <ShieldCheck className="w-4 h-4" />
-              <span>VOTO CONFIRMADO EM SEGREDO</span>
+              <span>ACUSAÇÃO CONFIRMADA</span>
             </div>
             <p className="text-xs text-neutral-400">
-              Você votou em <strong className="text-neutral-200">{selectedPlayer?.name}</strong>. Olhe para a TV para acompanhar a apuração!
+              Você acusou <strong className="text-neutral-200">{selectedPlayer?.name}</strong>. Olhe para a TV para acompanhar a apuração!
             </p>
           </div>
         )}
@@ -144,7 +146,7 @@ export function MobileVoting({
             </div>
 
             <h3 className="text-xl font-black uppercase font-['Cinzel'] tracking-wider text-neutral-100 mb-2">
-              CONFIRMAR VOTO?
+              CONFIRMAR ACUSAÇÃO?
             </h3>
 
             <p className="text-sm text-neutral-300 mb-6">
@@ -172,7 +174,7 @@ export function MobileVoting({
 
       {/* Footer */}
       <div className="pb-2 text-center text-xs text-neutral-600">
-        Ninguém na sala saberá em quem você votou até a revelação oficial
+        A acusação só será anunciada depois da sua confirmação
       </div>
     </div>
   );

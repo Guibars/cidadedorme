@@ -1,4 +1,6 @@
-import { canWalkSegment, findMansionPath } from '../src/data/navigation';
+import { NIGHT_TASKS } from '../src/data/nightTasks';
+import type { NightTask, Sighting } from '../src/types';
+import { canWalkSegment, findMansionPath, stepTowards } from '../src/data/navigation';
 import { randomUUID } from 'node:crypto';
 import { WebSocket } from 'ws';
 import {
@@ -32,6 +34,24 @@ export class Room {
   public lastActiveAt = Date.now();
   public readonly hostToken = randomUUID();
   public playerTokens = new Map<string, string>();
+  private nightStartedAt = 0;
+  private blackoutUntil = 0;
+  private blackoutUsed = false;
+  private powerRepairs = 0;
+  private taskGoal = 3;
+  private tasksCompleted = 0;
+  private meetingUsed = false;
+  private meetingReason = '';
+  private tasks = new Map<string, NightTask[]>();
+  private sightings = new Map<string, Sighting[]>();
+  private feedback = new Map<string, NonNullable<PrivatePlayerData['feedback']>>();
+  private feedbackId = 0;
+  private taskLastInput = new Map<string, number>();
+  private botPaths = new Map<string, { x: number; y: number }[]>();
+  private botQuestionAt = new Map<string, number>();
+  private botGoals = new Map<string, { x: number; y: number }>();
+  private botThinkAt = new Map<string, number>();
+  private botLastTask = new Map<string, number>();
   private investigationResults = new Map<string, NonNullable<PrivatePlayerData['detectiveInvestigationResult']>>();
   private movementFlush: ReturnType<typeof setTimeout> | null = null;
   private lastMovement = new Map<string, number>();
@@ -105,7 +125,7 @@ export class Room {
   private startAIChatLoop() {
     this.aiChatInterval = setInterval(() => {
       this.players.forEach((p) => {
-        if (p.isBot && p.isAlive && Math.random() < 0.15) { // 15% chance every 4 seconds
+        if (p.isBot && p.isAlive && Math.random() < (this.phase === 'DISCUSSION' ? 0.35 : 0.15)) { // 15% chance every 4 seconds
           this.generateSmartAIChat(p);
         }
       });
@@ -126,26 +146,19 @@ export class Room {
           'O relógio está correndo...'
         ];
         break;
-      case 'DISCUSSION':
+      case 'DISCUSSION': {
+        const memories = this.sightings.get(bot.id) || [];
+        const seen = memories[Math.floor(Math.random()*memories.length)];
+        const finished = this.tasks.get(bot.id)?.find(t => t.completed);
         messages = [
-          'Eu tenho quase certeza de que vi algo estranho.',
-          'Não olhem para mim, eu estava longe de confusão.',
-          'Alguém está mentindo...',
-          'Eu não confio nas respostas dessa última rodada.',
-          'Vocês estão acusando a pessoa errada.',
-          'Silêncio. Eu consigo ouvir alguém respirando alto...',
-          'Eu vi alguém saindo da cena do crime.',
-          'Cuidado com quem votam.',
-          'Não se deixem enganar tão fácil.'
+          seen ? `Vi ${seen.playerName} em ${getMansionRoom(seen.roomId).name}, aos ${seen.secondsIntoNight}s. Quem mais passou por lá?` : 'Não consegui confirmar nenhum encontro. Alguém consegue confirmar meu relato?',
+          finished ? `Concluí ${finished.title.toLowerCase()} em ${getMansionRoom(finished.roomId).name}.` : 'Eu estava tentando concluir minhas tarefas quando a noite acabou.',
+          'Vamos comparar os horários e os cômodos antes da decisão do detetive.'
         ];
         break;
+      }
       case 'VOTING':
-        messages = [
-          'Já decidi meu voto.',
-          'Espero que eu não esteja cometendo um erro.',
-          'Adeus para quem for...',
-          'Meu voto já foi.'
-        ];
+        messages = ['O detetive decide. Meu depoimento está no telão.', 'Compare os encontros com os álibis antes de acusar.'];
         break;
       default:
         // No talking in other phases (like night or reading questions)
@@ -257,10 +270,6 @@ export class Room {
     this.nightKillHappened = false;
 
     // Assign roles: 1 ASSASSINO, 1 DETETIVE, others INOCENTE
-    // Rules:
-    // 1. Bot is NEVER Detective ("Ele não pode um detetive")
-    // 2. Any player (human or bot) can be Killer with equal fair probability!
-    // 3. Detective is chosen from eligible humans.
     const shuffle = <T>(array: T[]): T[] => {
       const arr = [...array];
       for (let i = arr.length - 1; i > 0; i--) {
@@ -270,7 +279,11 @@ export class Room {
       return arr;
     };
 
-    const [killer, detective] = shuffle(playerList);
+    // Keep the decision with a human when playing as a couple with bots.
+    const humans = playerList.filter(p => !p.isBot);
+    const detective = shuffle(humans.length ? humans : playerList)[0];
+    const killer = shuffle(playerList.filter(p => p.id !== detective.id))[0];
+    this.meetingUsed = false;
 
     killer.role = 'ASSASSINO';
     this.killerPlayerId = killer.id;
@@ -392,9 +405,9 @@ export class Room {
   public startNightKillerPhase() {
     if (this.timerInterval) clearInterval(this.timerInterval);
     this.phase = 'NIGHT_KILLER';
-    // 35 seconds for the killer to walk close and strike with the knife
-    this.timerSeconds = 20;
-    this.timerMax = 20;
+    // Shared exploration gives every role a reason to move.
+    this.timerSeconds = 90;
+    this.timerMax = 90;
     this.nightVictimId = null;
     this.nightVictim = null;
     this.nightCrimeRoomId = null;
@@ -406,6 +419,16 @@ export class Room {
     this.investigationResults.clear();
     this.currentEvent = null;
     this.nightClue = '';
+    this.nightStartedAt = Date.now(); this.blackoutUntil = 0; this.blackoutUsed = false;
+    this.meetingReason = ''; this.powerRepairs = 0; this.tasksCompleted = 0;
+    this.taskGoal = Math.max(2, this.getAlivePlayers().length);
+    this.tasks.clear(); this.sightings.clear(); this.feedback.clear(); this.taskLastInput.clear();
+    this.botGoals.clear(); this.botPaths.clear(); this.botQuestionAt.clear(); this.botThinkAt.clear(); this.botLastTask.clear();
+    this.getAlivePlayers().forEach((p, index) => {
+      const offset = (index + this.round) % NIGHT_TASKS.length;
+      this.tasks.set(p.id, [NIGHT_TASKS[offset], NIGHT_TASKS[(offset+3)%NIGHT_TASKS.length]].map((t, i) => ({ ...t, id: `${this.round}-${p.id}-${i}`, sequence: Array.from({length:4}, () => 1+Math.floor(Math.random()*4)), progress:0, completed:false })));
+      p.privateNotes = [];
+    });
     this.players.forEach(p => { p.hasUsedAbility = false; p.isMoving = false; });
 
     // Reset night choices and votes
@@ -418,78 +441,167 @@ export class Room {
     this.broadcastPrivateUpdates();
     this.broadcastAudio('playNightFall');
 
-    // Simulate bots walking around during the night (Among Us feel)
-    const botMoveInterval = this.repeat(() => {
-      if (this.phase !== 'NIGHT_KILLER' && this.phase !== 'NIGHT_FALL') {
-        clearInterval(botMoveInterval);
-        return;
-      }
+    this.repeatNightLoop();
+    this.startTimer(90, () => this.startDayBreak());
+  }
 
-      this.players.forEach((p) => {
-        if (!p.isBot || !p.isAlive) return;
+  private livingActors() {
+    return this.getAlivePlayers().filter(p => p.id !== this.nightVictimId);
+  }
 
-        // If bot is Killer, move towards nearest living player or run away
-        if (p.role === 'ASSASSINO') {
-          if (this.nightKillHappened) {
-            // Run away rapidly to establish alibi
-            if (Math.random() < 0.8) {
-              const dx = (Math.random() - 0.5) * 150;
-              const dy = (Math.random() - 0.5) * 150;
-              this.movePlayer(p.id, (p.x || 400) + dx, (p.y || 250) + dy);
-            }
-          } else {
-            // Filter targets to try and avoid the Detective if possible, unless no one else is left
-            let targets = this.getAlivePlayers().filter((t) => t.id !== p.id);
-            if (targets.length === 0) {
-              targets = this.getAlivePlayers().filter((t) => t.id !== p.id);
-            }
+  private notifyPlayer(id: string, kind: NonNullable<PrivatePlayerData['feedback']>['kind'], text: string) {
+    this.feedback.set(id, { id: ++this.feedbackId, kind, text });
+    this.sendPrivateUpdate(id);
+  }
 
-            if (targets.length > 0) {
-              // Pick closest target
-              const px = p.x || 400;
-              const py = p.y || 250;
-              targets.sort((a, b) => {
-                const distA = Math.hypot((a.x || 400) - px, (a.y || 250) - py);
-                const distB = Math.hypot((b.x || 400) - px, (b.y || 250) - py);
-                return distA - distB;
-              });
+  private nearRoom(player: Player, roomId: MansionRoomId) {
+    const center = getRoomCenter(roomId);
+    return Math.hypot((player.x ?? 0) - center.x, (player.y ?? 0) - center.y) < 65 && canWalkSegment({ x: player.x!, y: player.y! }, center);
+  }
 
-              const target = targets[0];
-              const tx = target.x || 400;
-              const ty = target.y || 250;
+  public interactTask(playerId: string, taskId: string, symbol: number) {
+    const player = this.players.get(playerId);
+    const task = this.tasks.get(playerId)?.find(t => t.id === taskId);
+    if (this.phase !== 'NIGHT_KILLER' || !player?.isAlive || playerId === this.nightVictimId || !task || task.completed || !this.nearRoom(player, task.roomId)) return;
+    if (!Number.isInteger(symbol) || symbol < 1 || symbol > 4 || Date.now() - (this.taskLastInput.get(playerId) ?? 0) < 250) return;
+    this.taskLastInput.set(playerId, Date.now());
+    if (symbol !== task.sequence[task.progress]) {
+      task.progress = 0;
+      this.notifyPlayer(playerId, 'mistake', 'Sequência interrompida. Comece de novo.');
+      return;
+    }
+    task.progress++;
+    if (task.progress === task.sequence.length) {
+      task.completed = true;
+      this.tasksCompleted++;
+      player.privateNotes.push(`Concluí ${task.title.toLowerCase()} em ${getMansionRoom(task.roomId).name}.`);
+      this.notifyPlayer(playerId, 'task', 'Tarefa concluída. Seu trabalho ajuda a recuperar os registros da mansão.');
+      this.broadcastState();
+    } else this.sendPrivateUpdate(playerId);
+  }
 
-              const dist = Math.hypot(tx - px, ty - py);
-              if (dist <= 70) {
-                // Close enough to strike!
-                this.setNightKill(p.id, target.id, target.currentRoomId, tx, ty);
-              } else {
-            // Step towards victim
-            const angle = Math.atan2(ty - py, tx - px);
-            const speed = 40;
-            const nextX = px + Math.cos(angle) * speed;
-            const nextY = py + Math.sin(angle) * speed;
-            const route = findMansionPath({ x: px, y: py }, { x: tx, y: ty });
-            const step = route.find(point => Math.hypot(point.x - px, point.y - py) > 1);
-            if (step) this.movePlayer(p.id, step.x, step.y);
-              }
-            }
-          }
-        } else {
-          // Innocent / Detective bot: wander gently around mansion
-          if (Math.random() < 0.6) {
-            const dx = (Math.random() - 0.5) * 60;
-            const dy = (Math.random() - 0.5) * 60;
-            this.movePlayer(p.id, (p.x || 400) + dx, (p.y || 250) + dy);
+  public restorePower(playerId: string) {
+    const p = this.players.get(playerId);
+    if (this.phase !== 'NIGHT_KILLER' || !p?.isAlive || playerId === this.nightVictimId || Date.now() >= this.blackoutUntil || !this.nearRoom(p, 'basement')) return;
+    if (Date.now() - (this.taskLastInput.get(playerId) ?? 0) < 500) return;
+    this.taskLastInput.set(playerId, Date.now());
+    if (++this.powerRepairs >= 3) { this.blackoutUntil = 0; this.broadcastAudio('POWER_RESTORED'); }
+    this.notifyPlayer(playerId, 'task', this.powerRepairs >= 3 ? 'Energia restabelecida!' : 'Disjuntor rearmado. Continue.');
+    this.broadcastState();
+  }
+
+  public reportBody(playerId: string) {
+    const p = this.players.get(playerId), body = this.lastStabLocation;
+    if (this.phase !== 'NIGHT_KILLER' || !p?.isAlive || playerId === this.nightVictimId || !body || Math.hypot((p.x ?? 0) - body.x, (p.y ?? 0) - body.y) > 90 || !canWalkSegment({ x: p.x!, y: p.y! }, body)) return;
+    this.meetingReason = `${p.name} encontrou ${body.victimName} em ${getMansionRoom(body.roomId || 'living').name}.`;
+    this.broadcastAudio('BODY_REPORTED');
+    this.startDayBreak();
+  }
+
+  public callMeeting(playerId: string) {
+    const p = this.players.get(playerId);
+    if (this.phase !== 'NIGHT_KILLER' || !p?.isAlive || playerId === this.nightVictimId || this.meetingUsed || Date.now() - this.nightStartedAt < 15000 || !this.nearRoom(p, 'living')) return;
+    this.meetingUsed = true;
+    this.meetingReason = `${p.name} tocou o sino da sala. Reunião de emergência!`;
+    this.broadcastAudio('BODY_REPORTED'); this.startDayBreak();
+  }
+
+  private ensureDetective() {
+    if (this.players.get(this.detectivePlayerId || '')?.isAlive) return;
+    const eligible = this.getAlivePlayers().filter(p => p.role !== 'ASSASSINO');
+    const candidates = eligible.some(p => !p.isBot) ? eligible.filter(p => !p.isBot) : eligible;
+    const next = candidates[Math.floor(Math.random() * candidates.length)];
+    if (!next) return;
+    next.role = 'DETETIVE'; next.hasUsedAbility = false; this.detectivePlayerId = next.id;
+    this.notifyPlayer(next.id, 'investigation', 'Você recebeu o distintivo. Agora só você pode formalizar a acusação.');
+  }
+
+  public askBot(playerId: string, botId: string, topic: string) {
+    const caller=this.players.get(playerId), bot=this.players.get(botId);
+    if(this.phase!=='DISCUSSION'||!caller?.isAlive||!bot?.isAlive||!bot.isBot||!['ALIBI','ENCOUNTERS'].includes(topic))return;
+    if(Date.now()-(this.botQuestionAt.get(playerId) ?? 0)<3000)return;
+    this.botQuestionAt.set(playerId,Date.now());
+    const last=(this.sightings.get(botId)||[]).at(-1);
+    bot.chatMessage=topic==='ALIBI' ? `${caller.name}, ${bot.currentAnswer || 'não registrei meu álibi.'}` : last ? `${caller.name}, cruzei com ${last.playerName} em ${getMansionRoom(last.roomId).name}, aos ${last.secondsIntoNight}s.` : `${caller.name}, não consegui registrar nenhum encontro visível.`;
+    bot.chatTimestamp=Date.now(); this.broadcastState();
+  }
+
+  private setBotGoal(bot: Player, goal: {x:number;y:number}) {
+    const previous=this.botGoals.get(bot.id);
+    if(!previous||Math.hypot(previous.x-goal.x,previous.y-goal.y)>12) this.botPaths.delete(bot.id);
+    this.botGoals.set(bot.id,goal);
+  }
+
+  private repeatNightLoop() {
+    let lastPrivateUpdate = 0;
+    const interval = this.repeat(() => {
+      if (this.phase !== 'NIGHT_KILLER') { clearInterval(interval); this.gameIntervals.delete(interval); return; }
+      const now = Date.now(), elapsed = (now - this.nightStartedAt) / 1000;
+      const actors = this.livingActors();
+      const vision = now < this.blackoutUntil ? 75 : 170;
+      // Memories only contain people actually seen, never hidden roles.
+      for (const p of actors) {
+        const memories = this.sightings.get(p.id) || [];
+        for (const other of actors) {
+          if (p.id === other.id || Math.hypot(p.x! - other.x!, p.y! - other.y!) > vision || !canWalkSegment({ x: p.x!, y: p.y! }, { x: other.x!, y: other.y! })) continue;
+          const last = [...memories].reverse().find(m => m.playerId === other.id);
+          if (!last || elapsed - last.secondsIntoNight > 12) {
+            memories.push({ playerId: other.id, playerName: other.name, roomId: getRoomAtPosition(p.x!, p.y!), secondsIntoNight: Math.floor(elapsed) });
+            if (memories.length > 12) memories.shift();
+            this.sightings.set(p.id, memories);
+            this.notifyPlayer(p.id, 'encounter', `Você cruzou com ${other.name}. O encontro ficou no seu caderno.`);
           }
         }
-      });
-    }, 180);
-
-    // 20-second timer for killer turn -> then transitions directly to daybreak
-    this.startTimer(40, () => {
-      clearInterval(botMoveInterval);
-      this.startDayBreak();
-    });
+      }
+      for (const bot of actors.filter(p => p.isBot)) {
+        const point = { x: bot.x!, y: bot.y! };
+        const local = actors.filter(p => p.id !== bot.id && Math.hypot(p.x! - point.x, p.y! - point.y) <= vision && canWalkSegment(point, { x: p.x!, y: p.y! }));
+        const body = this.lastStabLocation;
+        if (body && Math.hypot(point.x-body.x, point.y-body.y) < 85 && canWalkSegment(point,body) && now-body.timestamp > (bot.role === 'ASSASSINO' ? 8000 : 1800)) {
+          this.reportBody(bot.id); if (this.phase !== 'NIGHT_KILLER') return;
+        }
+        if (now < this.blackoutUntil && bot.role !== 'ASSASSINO') {
+          this.setBotGoal(bot, getRoomCenter('basement'));
+          this.restorePower(bot.id);
+        } else {
+          const task = this.tasks.get(bot.id)?.find(t => !t.completed);
+          if (task && this.nearRoom(bot, task.roomId) && now - (this.botLastTask.get(bot.id) || 0) > 1100) {
+            this.botLastTask.set(bot.id, now); this.interactTask(bot.id, task.id, task.sequence[task.progress]);
+          }
+          if (now >= (this.botThinkAt.get(bot.id) || 0)) {
+            this.botThinkAt.set(bot.id, now + 1600 + Math.random()*1600);
+            const goal = task ? getRoomCenter(task.roomId) : getRoomCenter(MANSION_ROOMS[Math.floor(Math.random()*MANSION_ROOMS.length)].id);
+            this.setBotGoal(bot, goal);
+            if (bot.role === 'ASSASSINO' && !this.nightKillHappened && elapsed > 14) {
+              const target = local[Math.floor(Math.random()*local.length)];
+              if (target && local.length <= 1) {
+                this.setBotGoal(bot, {x:target.x!,y:target.y!});
+                if (Math.hypot(point.x-target.x!,point.y-target.y!) < 70) this.setNightKill(bot.id,target.id);
+              } else if (local.length > 1 && !this.blackoutUsed && Math.random()<0.4) this.useKillerSabotage(bot.id,'BLACKOUT');
+            }
+            if (bot.role === 'DETETIVE' && !bot.hasUsedAbility && elapsed > 20 && local.length) this.useDetectiveAbility(bot.id,local[0].id);
+          }
+        }
+        const goal = this.botGoals.get(bot.id);
+        if (goal && Math.hypot(goal.x-point.x,goal.y-point.y)>4) {
+          const cached = this.botPaths.get(bot.id);
+          const route = cached?.length ? cached : findMansionPath(point,goal);
+          this.botPaths.set(bot.id,route);
+          let next = point, budget = 48;
+          while (route.length && budget > 0) {
+            const step = stepTowards(next,route[0],budget);
+            if (!canWalkSegment(next,step)) { this.botPaths.delete(bot.id); break; }
+            const traveled = Math.hypot(step.x-next.x,step.y-next.y);
+            next = step; budget -= traveled;
+            if (Math.hypot(next.x-route[0].x,next.y-route[0].y)<1) route.shift();
+            else break;
+          }
+          if (next !== point) this.movePlayer(bot.id,next.x,next.y);
+        }
+      }
+      // Update stationary phones once a second without flooding the movement channel.
+      if (now-lastPrivateUpdate>=1000) { lastPrivateUpdate=now; this.broadcastPrivateUpdates(); }
+    }, 300);
   }
 
   // Legacy fallback if needed
@@ -506,7 +618,7 @@ export class Room {
   ) {
     if (this.phase !== 'NIGHT_KILLER' && this.phase !== 'NIGHT_FALL') return;
     if (killerId !== this.killerPlayerId) return;
-    if (this.nightKillHappened) return false;
+    if (this.nightKillHappened || Date.now() - this.nightStartedAt < 12000) return false;
 
     const target = this.players.get(targetPlayerId);
     const killer = this.players.get(killerId);
@@ -533,7 +645,7 @@ export class Room {
     };
 
     // Toca som de facada
-    this.sendPrivateUpdate(target.id, { isNightVictim: true });
+    this.notifyPlayer(target.id, 'victim', 'Você foi eliminado. Guarde o segredo até a reunião.');
 
     // TEMPO DE FUGA DO ASSASSINO:
     // Garante pelo menos 6 segundos para fugir e forjar álibi
@@ -546,7 +658,7 @@ export class Room {
     return true;
   }
 
-  // Detective role is removed as requested by user - straight to Day Break
+  // Compatibility entry point: investigation happens during shared exploration.
   public startNightDetectivePhase() {
     this.startDayBreak();
   }
@@ -591,10 +703,10 @@ export class Room {
         const killerEscapeRoomName = getMansionRoom(killerEscapeRoomId).name;
 
         // Remove obvious clues as requested by user
-        const physicalEvidence = 'Apenas uma leve desordem no ambiente, sem rastros claros.';
+        const physicalEvidence = this.tasksCompleted >= this.taskGoal ? `Registros recuperados: o ataque aconteceu ${Math.floor(((this.lastStabLocation?.timestamp ?? this.nightStartedAt) - this.nightStartedAt)/1000)} segundos após o início da exploração. Comparem esse horário com os encontros.` : 'Registros incompletos. Mais tarefas teriam recuperado o horário do ataque.';
         const weaponTrace = 'A arma do crime foi levada, não há impressões digitais.';
-        const escapeRouteClue = 'Não há rastros de pegadas. O local do crime foi limpo.';
-        const acousticReport = 'O silêncio reinou na mansão. Nada foi ouvido.';
+        const escapeRouteClue = 'Confrontem os encontros anotados nos celulares. Voltar ao cômodo inicial não apaga as testemunhas.';
+        const acousticReport = this.meetingReason || 'O sino anunciou o fim da exploração.';
 
         // Calculate blood trail points from crime location to escape room center (Empty to remove obvious blood)
         const trailPoints: { x: number; y: number }[] = [];
@@ -611,7 +723,7 @@ export class Room {
           trailPoints,
         };
 
-        this.nightClue = `🔍 PERÍCIA: O corpo de ${victim.name} foi encontrado na(o) ${crimeRoomName}. O assassino agiu rápido e de forma furtiva.`;
+        this.nightClue = `${victim.name} foi encontrado em ${crimeRoomName}. ${physicalEvidence}`;
 
         this.clues.push({
           id: `night-clue-${Date.now()}`,
@@ -628,9 +740,9 @@ export class Room {
       this.nightClue = 'Nenhum ataque foi consumado nesta noite... Todos os cômodos amanheceram seguros!';
     }
 
+    this.ensureDetective();
     this.broadcastState();
     this.broadcastPrivateUpdates();
-    this.broadcastAudio('playKillStab');
 
     // Check if Killer already won (e.g. only 1 innocent left)
     const alivePlayers = this.getAlivePlayers();
@@ -689,9 +801,11 @@ export class Room {
         const delay = 3000 + Math.random() * 8000;
         this.later(() => {
           if (this.phase === 'ROUND_QUESTION' && !p.currentAnswer && this.currentQuestion) {
-            const opts = this.currentQuestion.options;
-            const chosen = opts[Math.floor(Math.random() * opts.length)];
-            this.submitAnswer(p.id, chosen);
+            const memories = this.sightings.get(p.id) || [];
+            const last = memories[memories.length-1];
+            const room = p.role === 'ASSASSINO' ? MANSION_ROOMS.filter(r => r.id !== this.nightCrimeRoomId)[Math.floor(Math.random()*5)] : getMansionRoom(p.currentRoomId || 'living');
+            const encounter = last ? ` Cruzei com ${last.playerName} em ${getMansionRoom(last.roomId).name}, aos ${last.secondsIntoNight}s.` : ' Não vi ninguém de perto.';
+            this.submitAnswer(p.id, `Eu estava em ${room.name}.` + encounter);
           }
         }, delay);
       }
@@ -757,6 +871,10 @@ export class Room {
     this.broadcastState();
     this.broadcastPrivateUpdates();
 
+    this.getAlivePlayers().filter(p => p.isBot).forEach((bot, i) => this.later(() => {
+      if (this.phase === 'DISCUSSION') this.generateSmartAIChat(bot);
+    }, 2000+i*2500));
+
     this.startTimer(75, () => {
       this.startVotingPhase();
     });
@@ -817,6 +935,7 @@ export class Room {
 
   public startVotingPhase() {
     if (this.timerInterval) clearInterval(this.timerInterval);
+    this.ensureDetective();
     this.phase = 'VOTING';
     // Only 35 seconds for the detective to make the final choice
     this.timerSeconds = 35;
@@ -835,11 +954,16 @@ export class Room {
       this.tallyVotesAndReveal();
     });
 
-    this.getAlivePlayers().filter(p => p.isBot).forEach(bot => {
+    this.getAlivePlayers().filter(p => p.isBot && p.role === 'DETETIVE').forEach(bot => {
       this.later(() => {
         if (this.phase !== 'VOTING') return;
         const targets = this.getAlivePlayers().filter(p => p.id !== bot.id);
-        if (targets.length) this.submitVote(bot.id, targets[Math.floor(Math.random() * targets.length)].id, true);
+        if (targets.length) {
+          const memories = this.sightings.get(bot.id) || [];
+          const score = (target: Player) => memories.filter(m => m.playerId === target.id && m.roomId === this.nightCrimeRoomId).length + Math.random()*2;
+          const ordered = targets.map(target => ({ target, score: score(target) })).sort((a,b)=>b.score-a.score);
+          this.submitVote(bot.id, ordered[0].target.id, true);
+        }
       }, 3000 + Math.random() * 6000);
     });
   }
@@ -847,7 +971,7 @@ export class Room {
   public submitVote(voterId: string, targetId: string, confirmImmediately = false) {
     const voter = this.players.get(voterId);
     const target = this.players.get(targetId);
-    if (this.phase !== 'VOTING' || !voter?.isAlive || voter.hasConfirmedVote || !target?.isAlive || targetId === voterId) return;
+    if (this.phase !== 'VOTING' || !voter?.isAlive || voter.role !== 'DETETIVE' || voter.id !== this.detectivePlayerId || voter.hasConfirmedVote || !target?.isAlive || targetId === voterId) return;
     voter.votedTargetId = targetId;
     if (confirmImmediately) this.confirmVote(voterId);
     else this.sendPrivateUpdate(voterId);
@@ -855,12 +979,12 @@ export class Room {
 
   public confirmVote(voterId: string) {
     const voter = this.players.get(voterId);
-    if (this.phase !== 'VOTING' || !voter?.isAlive || voter.hasConfirmedVote || !voter.votedTargetId) return;
+    if (this.phase !== 'VOTING' || !voter?.isAlive || voter.role !== 'DETETIVE' || voter.id !== this.detectivePlayerId || voter.hasConfirmedVote || !voter.votedTargetId) return;
     if (!this.players.get(voter.votedTargetId)?.isAlive) return;
     voter.hasConfirmedVote = true;
     this.activeVotesCount = this.getAlivePlayers().filter(p => p.hasConfirmedVote).length;
     this.broadcastState(); this.sendPrivateUpdate(voterId);
-    if (this.activeVotesCount === this.getAlivePlayers().length) {
+    if (this.activeVotesCount === 1) {
       if (this.timerInterval) clearInterval(this.timerInterval);
       this.later(() => { if (this.phase === 'VOTING') this.tallyVotesAndReveal(); }, 1000);
     }
@@ -876,7 +1000,7 @@ export class Room {
 
     this.getAlivePlayers().forEach((p) => {
       const targetId = p.votedTargetId;
-      if (targetId && p.hasConfirmedVote) {
+      if (targetId && p.hasConfirmedVote && p.role === 'DETETIVE' && p.id === this.detectivePlayerId) {
         const target = this.players.get(targetId);
         if (target) {
           target.stats.votesReceived++;
@@ -997,16 +1121,23 @@ export class Room {
     const target = this.players.get(targetId);
     if (this.phase !== 'NIGHT_KILLER' || !detective?.isAlive || detective.id === this.nightVictimId || detective.role !== 'DETETIVE' || detective.hasUsedAbility || !target?.isAlive || target.id === detectiveId) return;
     detective.hasUsedAbility = true;
-    const isKiller = target.role === 'ASSASSINO';
+    const memories = this.sightings.get(targetId) || [];
+    const last = memories[memories.length - 1];
     this.investigationResults.set(detectiveId, {
-      targetName: target.name, isKiller,
-      resultText: isKiller ? `${target.name} é o infiltrado. Convença o grupo sem mostrar sua tela.` : `${target.name} não é o infiltrado. Use essa informação no debate.`,
+      targetName: target.name,
+      resultText: last ? `Relatório de ${target.name}: cruzou com ${last.playerName} em ${getMansionRoom(last.roomId).name}, aos ${last.secondsIntoNight}s da noite. Isso não comprova inocência ou culpa.` : `${target.name} não teve encontros registrados até este momento. Ausência de registro não prova culpa.`,
     });
+    this.notifyPlayer(detectiveId, 'investigation', 'Relatório recebido no seu caderno. A conclusão é sua.');
     this.sendPrivateUpdate(detectiveId);
   }
 
   public useKillerSabotage(killerId: string, sabotageId: string) {
     const killer = this.players.get(killerId);
+    if (sabotageId === 'BLACKOUT') {
+      if (this.phase !== 'NIGHT_KILLER' || !killer?.isAlive || killer.role !== 'ASSASSINO' || this.blackoutUsed || Date.now()-this.nightStartedAt < 10000) return;
+      this.blackoutUsed = true; this.blackoutUntil = Date.now()+18000; this.powerRepairs = 0;
+      this.broadcastAudio('BLACKOUT'); this.broadcastState(); this.broadcastPrivateUpdates(); return;
+    }
     if (!killer?.isAlive || killer.role !== 'ASSASSINO' || killer.hasUsedAbility || this.phase !== 'DISCUSSION' || sabotageId !== 'FALSE_CLUE') return;
     const targets = this.getAlivePlayers().filter(p => p.id !== killerId);
     if (!targets.length) return;
@@ -1037,6 +1168,8 @@ export class Room {
   public getPublicState(viewerId?: string): PublicGameState {
     const night = this.phase === 'NIGHT_KILLER' || this.phase === 'NIGHT_FALL';
     const viewer = viewerId ? this.players.get(viewerId) : undefined;
+    const vision = Date.now() < this.blackoutUntil ? 75 : 170;
+    const visibleToViewer = (p: Player) => !!viewer?.isAlive && viewer.id !== this.nightVictimId && (p.id === viewerId || (Math.hypot((p.x ?? 0)-(viewer.x ?? 0),(p.y ?? 0)-(viewer.y ?? 0)) <= vision && canWalkSegment({x:viewer.x!,y:viewer.y!},{x:p.x!,y:p.y!})));
     const playerList = Array.from(this.players.values()).map((p) => ({
       id: p.id,
       name: p.name,
@@ -1046,8 +1179,8 @@ export class Room {
       hasRevealedRole: p.hasRevealedRole,
       connected: p.connected,
       currentRoomId: night && p.id !== viewerId ? undefined : p.currentRoomId,
-      x: night && (!viewer || (p.id !== viewerId && Math.hypot((p.x ?? 0) - (viewer.x ?? 0), (p.y ?? 0) - (viewer.y ?? 0)) > 170)) ? undefined : p.x,
-      y: night && (!viewer || (p.id !== viewerId && Math.hypot((p.x ?? 0) - (viewer.x ?? 0), (p.y ?? 0) - (viewer.y ?? 0)) > 170)) ? undefined : p.y,
+      x: night && !visibleToViewer(p) ? undefined : p.x,
+      y: night && !visibleToViewer(p) ? undefined : p.y,
       isMoving: !night || p.id === viewerId ? p.isMoving : undefined,
       direction: !night || p.id === viewerId ? p.direction : undefined,
       hasAnswered: p.currentAnswer !== undefined,
@@ -1095,6 +1228,8 @@ export class Room {
         : undefined;
 
     return {
+      nightStatus: { blackout: night && Date.now() < this.blackoutUntil, blackoutSeconds: night ? Math.max(0, Math.ceil((this.blackoutUntil-Date.now())/1000)) : 0, repairs: this.powerRepairs, tasksCompleted: this.tasksCompleted, taskGoal: this.taskGoal, meetingReason: this.meetingReason || undefined },
+      detectiveName: ['VOTING','VOTE_REVEAL','VERDICT'].includes(this.phase) ? this.players.get(this.detectivePlayerId || '')?.name : undefined,
       roomCode: this.code,
       phase: this.phase,
       round: this.round,
@@ -1179,6 +1314,12 @@ export class Room {
     if (!player) return null;
 
     return {
+      tasks: this.tasks.get(playerId) || [], sightings: this.sightings.get(playerId) || [],
+      feedback: this.feedback.get(playerId),
+      attackReadyIn: Math.max(0, Math.ceil((12000 - (Date.now()-this.nightStartedAt))/1000)),
+      canBlackout: player.role === 'ASSASSINO' && !this.blackoutUsed && Date.now()-this.nightStartedAt >= 10000,
+      canCallMeeting: !this.meetingUsed && Date.now()-this.nightStartedAt >= 15000,
+      nearbyBody: this.phase === 'NIGHT_KILLER' && player.isAlive && playerId !== this.nightVictimId && this.lastStabLocation && Math.hypot((player.x ?? 0)-this.lastStabLocation.x,(player.y ?? 0)-this.lastStabLocation.y) <= 90 && canWalkSegment({x:player.x!,y:player.y!},this.lastStabLocation) ? this.lastStabLocation : undefined,
       player,
       roomCode: this.code,
       phase: this.phase,
@@ -1204,7 +1345,7 @@ export class Room {
     const ws = this.playerSockets.get(playerId);
     const privateData = this.getPrivateData(playerId, overrides);
     if (!privateData) return;
-    if (ws && ws.readyState === WebSocket.OPEN) {
+    if (ws && ws.readyState === WebSocket.OPEN && ws.bufferedAmount < 128 * 1024) {
       const msg: ServerMessage = { type: 'PRIVATE_UPDATE', data: privateData };
       ws.send(JSON.stringify(msg));
     }
@@ -1271,6 +1412,8 @@ export class Room {
     this.activeVotesCount = 0; this.revealedVotes = []; this.voteRevealStep = 0;
     this.timerSeconds = 0;
     if (this.timerInterval) clearInterval(this.timerInterval);
+    this.tasks.clear(); this.sightings.clear(); this.feedback.clear(); this.botGoals.clear(); this.botPaths.clear(); this.botQuestionAt.clear(); this.botThinkAt.clear(); this.botLastTask.clear(); this.taskLastInput.clear();
+    this.blackoutUntil = 0; this.blackoutUsed = false; this.meetingUsed = false; this.meetingReason = ''; this.tasksCompleted = 0; this.powerRepairs = 0;
     this.phase = 'LOBBY';
     this.round = 0;
     this.clues = [];

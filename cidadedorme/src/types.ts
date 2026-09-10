@@ -138,6 +138,9 @@ export interface PublicPlayer {
 }
 
 export interface PublicGameState {
+  nightStatus?: { blackout: boolean; blackoutSeconds: number; repairs: number; tasksCompleted: number; taskGoal: number; meetingReason?: string };
+  detectiveName?: string;
+
   roomCode: string;
   phase: GamePhase;
   round: number;
@@ -216,7 +219,30 @@ export interface PublicGameState {
   };
 }
 
+export interface NightTask {
+  id: string;
+  roomId: MansionRoomId;
+  title: string;
+  instruction: string;
+  sequence: number[];
+  progress: number;
+  completed: boolean;
+}
+export interface Sighting {
+  playerId: string;
+  playerName: string;
+  roomId: MansionRoomId;
+  secondsIntoNight: number;
+}
 export interface PrivatePlayerData {
+  tasks?: NightTask[];
+  sightings?: Sighting[];
+  attackReadyIn?: number;
+  canBlackout?: boolean;
+  canCallMeeting?: boolean;
+  nearbyBody?: { x: number; y: number; victimId: string; victimName: string; roomId?: MansionRoomId };
+  feedback?: { id: number; kind: 'task' | 'mistake' | 'encounter' | 'victim' | 'investigation' | 'report'; text: string };
+
   player: Player;
   roomCode: string;
   phase: GamePhase;
@@ -227,7 +253,7 @@ export interface PrivatePlayerData {
   detectiveInvestigationResult?: {
     targetName: string;
     resultText: string;
-    isKiller: boolean;
+
   };
   hasUsedAbility: boolean;
   canUseAbility: boolean;

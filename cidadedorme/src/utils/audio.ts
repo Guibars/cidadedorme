@@ -3,13 +3,24 @@
 
 class SoundEngine {
   private ctx: AudioContext | null = null;
-  public enabled: boolean = true;
+  public enabled = true;
+  public hapticsEnabled = true;
+  public gentle = true;
+  public volume = 0.45;
+  private master: GainNode | null = null;
   private droneOsc: OscillatorNode | null = null;
   private droneGain: GainNode | null = null;
   private isDronePlaying: boolean = false;
 
   constructor() {
     if (typeof window !== 'undefined') {
+      try {
+        const prefs = JSON.parse(localStorage.getItem('infiltrado-atmosphere') || '{}');
+        this.enabled = prefs.enabled !== false;
+        this.hapticsEnabled = prefs.hapticsEnabled !== false;
+        this.gentle = prefs.gentle !== false;
+        if (typeof prefs.volume === 'number') this.volume = Math.max(0, Math.min(1, prefs.volume));
+      } catch { /* Use the quiet family preset when storage is unavailable. */ }
       const unlockAudio = () => {
         this.initCtx();
         window.removeEventListener('touchstart', unlockAudio);
@@ -27,6 +38,9 @@ class SoundEngine {
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (AudioCtx) {
         this.ctx = new AudioCtx();
+        this.master = this.ctx!.createGain();
+        this.master.connect(this.ctx!.destination);
+        this.updateGain();
       }
     }
     if (this.ctx && this.ctx.state === 'suspended') {
@@ -39,7 +53,44 @@ class SoundEngine {
     if (!this.enabled && this.isDronePlaying) {
       this.stopDrone();
     }
+    this.savePreferences();
     return this.enabled;
+  }
+
+  private updateGain() {
+    if (this.master && this.ctx) this.master.gain.setTargetAtTime(this.enabled ? this.volume * (this.gentle ? 0.4 : 0.8) : 0, this.ctx.currentTime, 0.06);
+  }
+  private savePreferences() {
+    this.updateGain();
+    try { localStorage.setItem('infiltrado-atmosphere', JSON.stringify({ enabled:this.enabled,hapticsEnabled:this.hapticsEnabled,gentle:this.gentle,volume:this.volume })); } catch {}
+    window.dispatchEvent(new Event('infiltrado-audio-change'));
+  }
+  public setVolume(value: number) { this.volume = Math.max(0,Math.min(1,value)); this.savePreferences(); }
+  public setGentle(value: boolean) { this.gentle = value; this.savePreferences(); }
+  public toggleHaptics() { this.hapticsEnabled = !this.hapticsEnabled; this.savePreferences(); }
+
+  // Wind through the mansion: filtered noise with a slow, restrained envelope.
+  public playHauntedWind() {
+    if (!this.enabled) return;
+    this.initCtx(); if (!this.ctx || !this.master) return;
+    const ctx=this.ctx, now=ctx.currentTime, duration=4;
+    const buffer=ctx.createBuffer(1,ctx.sampleRate*duration,ctx.sampleRate);
+    const samples=buffer.getChannelData(0);
+    for(let i=0;i<samples.length;i++) samples[i]=Math.random()*2-1;
+    const source=ctx.createBufferSource(), filter=ctx.createBiquadFilter(), gain=ctx.createGain();
+    source.buffer=buffer; filter.type='bandpass'; filter.frequency.setValueAtTime(240,now); filter.frequency.linearRampToValueAtTime(650,now+duration); filter.Q.value=3;
+    gain.gain.setValueAtTime(0.001,now); gain.gain.linearRampToValueAtTime(0.1,now+1.7); gain.gain.exponentialRampToValueAtTime(0.001,now+duration);
+    source.connect(filter); filter.connect(gain); gain.connect(this.master); source.start(now); source.stop(now+duration);
+  }
+  public playMeetingBell() {
+    if (!this.enabled) return;
+    this.initCtx(); if (!this.ctx || !this.master) return;
+    const ctx=this.ctx, now=ctx.currentTime;
+    [220,440,660].forEach((frequency,i)=>{
+      const osc=ctx.createOscillator(), gain=ctx.createGain(); osc.frequency.value=frequency;
+      gain.gain.setValueAtTime(0.16/(i+1),now); gain.gain.exponentialRampToValueAtTime(0.001,now+2.5);
+      osc.connect(gain); gain.connect(this.master!); osc.start(now); osc.stop(now+2.5);
+    });
   }
 
   // Cinematic Sub-bass Boom (screen transitions, reveals)
@@ -60,7 +111,7 @@ class SoundEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, now + 1.4);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.master!);
 
     osc.start(now);
     osc.stop(now + 1.4);
@@ -83,7 +134,7 @@ class SoundEngine {
     gain1.gain.setValueAtTime(0.75, now);
     gain1.gain.exponentialRampToValueAtTime(0.01, now + 0.28);
     osc1.connect(gain1);
-    gain1.connect(this.ctx.destination);
+    gain1.connect(this.master!);
     osc1.start(now);
     osc1.stop(now + 0.3);
 
@@ -97,7 +148,7 @@ class SoundEngine {
     gain2.gain.setValueAtTime(0.9, t2);
     gain2.gain.exponentialRampToValueAtTime(0.001, t2 + 2.0);
     osc2.connect(gain2);
-    gain2.connect(this.ctx.destination);
+    gain2.connect(this.master!);
     osc2.start(t2);
     osc2.stop(t2 + 2.0);
 
@@ -110,7 +161,7 @@ class SoundEngine {
     gain3.gain.setValueAtTime(0.25, t2);
     gain3.gain.exponentialRampToValueAtTime(0.001, t2 + 1.4);
     osc3.connect(gain3);
-    gain3.connect(this.ctx.destination);
+    gain3.connect(this.master!);
     osc3.start(t2);
     osc3.stop(t2 + 1.5);
   }
@@ -139,7 +190,7 @@ class SoundEngine {
 
       this.droneOsc.connect(filter);
       filter.connect(this.droneGain);
-      this.droneGain.connect(this.ctx.destination);
+      this.droneGain.connect(this.master!);
 
       this.droneOsc.start(now);
       this.isDronePlaying = true;
@@ -184,7 +235,7 @@ class SoundEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.master!);
 
     osc.start(now);
     osc.stop(now + 0.05);
@@ -208,7 +259,7 @@ class SoundEngine {
     gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
 
     osc1.connect(gain1);
-    gain1.connect(this.ctx.destination);
+    gain1.connect(this.master!);
 
     osc1.start(now);
     osc1.stop(now + 0.14);
@@ -225,7 +276,7 @@ class SoundEngine {
     gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
 
     osc2.connect(gain2);
-    gain2.connect(this.ctx.destination);
+    gain2.connect(this.master!);
 
     osc2.start(now + 0.18);
     osc2.stop(now + 0.35);
@@ -249,7 +300,7 @@ class SoundEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.master!);
 
     osc.start(now);
     osc.stop(now + 0.08);
@@ -274,7 +325,7 @@ class SoundEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.master!);
 
     osc.start(now);
     osc.stop(now + 0.18);
@@ -298,7 +349,7 @@ class SoundEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.master!);
 
     osc.start(now);
     osc.stop(now + 0.4);
@@ -326,7 +377,7 @@ class SoundEngine {
       gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.9);
 
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this.master!);
 
       osc.start(startTime);
       osc.stop(startTime + 0.9);
@@ -355,7 +406,7 @@ class SoundEngine {
       gain.gain.exponentialRampToValueAtTime(0.001, startTime + 1.2);
 
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this.master!);
 
       osc.start(startTime);
       osc.stop(startTime + 1.2);
@@ -383,7 +434,7 @@ class SoundEngine {
       gain.gain.exponentialRampToValueAtTime(0.001, now + 2.5);
 
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this.master!);
 
       osc.start(now);
       osc.stop(now + 2.5);
@@ -408,7 +459,7 @@ class SoundEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.master!);
 
     osc.start(now);
     osc.stop(now + 0.04);
@@ -432,7 +483,7 @@ class SoundEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.7);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.master!);
 
     osc.start(now);
     osc.stop(now + 0.7);
@@ -454,7 +505,7 @@ class SoundEngine {
     gain1.gain.setValueAtTime(0.5, now);
     gain1.gain.exponentialRampToValueAtTime(0.001, now + 2.5);
     osc1.connect(gain1);
-    gain1.connect(this.ctx.destination);
+    gain1.connect(this.master!);
     osc1.start(now);
     osc1.stop(now + 2.5);
 
@@ -467,7 +518,7 @@ class SoundEngine {
     gain2.gain.setValueAtTime(0.18, now + 0.2);
     gain2.gain.exponentialRampToValueAtTime(0.001, now + 2.2);
     osc2.connect(gain2);
-    gain2.connect(this.ctx.destination);
+    gain2.connect(this.master!);
     osc2.start(now + 0.2);
     osc2.stop(now + 2.2);
   }
@@ -491,7 +542,7 @@ class SoundEngine {
       gain.gain.exponentialRampToValueAtTime(0.001, startTime + 2.0);
 
       osc.connect(gain);
-      gain.connect(this.ctx!.destination);
+      gain.connect(this.master!);
 
       osc.start(startTime);
       osc.stop(startTime + 2.0);
@@ -516,7 +567,7 @@ class SoundEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.master!);
 
     osc.start(now);
     osc.stop(now + 1.0);
@@ -540,7 +591,7 @@ class SoundEngine {
       gain1.gain.setValueAtTime(0.45, now);
       gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
       osc1.connect(gain1);
-      gain1.connect(this.ctx.destination);
+      gain1.connect(this.master!);
       osc1.start(now);
       osc1.stop(now + 0.26);
 
@@ -553,7 +604,7 @@ class SoundEngine {
       gain2.gain.setValueAtTime(0.5, now + 0.05);
       gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
       osc2.connect(gain2);
-      gain2.connect(this.ctx.destination);
+      gain2.connect(this.master!);
       osc2.start(now + 0.05);
       osc2.stop(now + 0.42);
 
@@ -580,7 +631,7 @@ class SoundEngine {
         gain.gain.setValueAtTime(0.4, now + offset);
         gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.16);
         osc.connect(gain);
-        gain.connect(this.ctx!.destination);
+        gain.connect(this.master!);
         osc.start(now + offset);
         osc.stop(now + offset + 0.18);
       });
@@ -589,72 +640,15 @@ class SoundEngine {
     }
   }
 
-  // Acoustic haptic thump (works on iPhone/iPad even when navigator.vibrate is disabled)
-  public playHapticPulse(duration = 0.08, frequency = 45) {
-    if (!this.enabled) return;
-    this.initCtx();
-    if (!this.ctx) return;
-    try {
-      const now = this.ctx.currentTime;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(frequency, now);
-      gain.gain.setValueAtTime(0.6, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-      osc.start(now);
-      osc.stop(now + duration);
-    } catch {
-      // Ignore
-    }
-  }
-
-  // Trigger mobile vibration if supported + acoustic haptic
+  // Physical vibration only. Visual feedback is handled by GameAtmosphere.
   public triggerVibrate(pattern: number | number[] = 50) {
-    if (typeof window !== 'undefined' && 'navigator' in window && navigator.vibrate) {
-      try {
-        navigator.vibrate(pattern);
-      } catch {
-        // Fallback
-      }
-    }
-    // Also trigger subtle acoustic pulse for devices like iOS that restrict navigator.vibrate
-    this.playHapticPulse(0.06, 50);
+    if (!this.hapticsEnabled || typeof navigator === 'undefined' || document.hidden || !navigator.vibrate) return;
+    try { navigator.vibrate(pattern); } catch { /* Visual feedback remains available. */ }
   }
-
-  // Night fall vibration: subtle double buzz signaling "close your eyes"
-  public triggerNightFallVibrate() {
-    this.triggerVibrate([200, 100, 200]);
-    this.playHapticPulse(0.2, 38);
-  }
-
-  // Heavy ominous buzz when assassinated
-  public triggerVictimDeathVibrate() {
-    this.triggerVibrate([300, 100, 300, 100, 600]);
-    this.playHapticPulse(0.35, 30);
-  }
-
-  // Morning arrives: wake-up double pulse
-  public triggerMorningVibrate() {
-    this.triggerVibrate([150, 100, 150, 100, 300]);
-    this.playHapticPulse(0.15, 65);
-  }
-
-  // Role reveal vibration
-  public triggerRoleRevealVibrate(role?: string) {
-    if (role === 'ASSASSINO') {
-      this.triggerVibrate([150, 80, 250, 80, 450]);
-      this.playHapticPulse(0.25, 35);
-    } else if (role === 'DETETIVE') {
-      this.triggerVibrate([100, 80, 100, 80, 200]);
-      this.playHapticPulse(0.15, 55);
-    } else {
-      this.triggerVibrate([120, 100, 120]);
-      this.playHapticPulse(0.1, 70);
-    }
-  }
+  public triggerNightFallVibrate() { this.triggerVibrate([70,80,70]); }
+  public triggerVictimDeathVibrate() { this.triggerVibrate([120,80,120]); }
+  public triggerMorningVibrate() { this.triggerVibrate([70,80,70]); }
+  public triggerRoleRevealVibrate(_role?: string) { this.triggerVibrate([50,70,50]); }
 
   // Vote cast / tap confirmation
   public triggerVoteCastVibrate() {

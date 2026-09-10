@@ -1,3 +1,5 @@
+import { canWalkSegment, findMansionPath } from '../src/data/navigation';
+import { randomUUID } from 'node:crypto';
 import { WebSocket } from 'ws';
 import {
   Role,
@@ -27,6 +29,26 @@ const BOT_NAMES = ['Eduardo', 'Marianne', 'Lucas', 'Pedro', 'Beatriz', 'Rafael']
 
 export class Room {
   public code: string;
+  public lastActiveAt = Date.now();
+  public readonly hostToken = randomUUID();
+  public playerTokens = new Map<string, string>();
+  private investigationResults = new Map<string, NonNullable<PrivatePlayerData['detectiveInvestigationResult']>>();
+  private movementFlush: ReturnType<typeof setTimeout> | null = null;
+  private lastMovement = new Map<string, number>();
+  private gameTimers = new Set<ReturnType<typeof setTimeout>>();
+  private gameIntervals = new Set<ReturnType<typeof setInterval>>();
+  private later(callback: () => void, ms: number) {
+    const timer = setTimeout(() => { this.gameTimers.delete(timer); callback(); }, ms);
+    this.gameTimers.add(timer); return timer;
+  }
+  private repeat(callback: () => void, ms: number) {
+    const timer = setInterval(callback, ms); this.gameIntervals.add(timer); return timer;
+  }
+  private clearGameTimers() {
+    this.gameTimers.forEach(clearTimeout); this.gameTimers.clear();
+    this.gameIntervals.forEach(clearInterval); this.gameIntervals.clear();
+    if (this.timerInterval) clearInterval(this.timerInterval);
+  }
   public hostSocket: WebSocket | null = null;
   public players: Map<string, Player> = new Map();
   public playerSockets: Map<string, WebSocket> = new Map();
@@ -77,7 +99,6 @@ export class Room {
 
   constructor(code: string) {
     this.code = code;
-    this.addMysteriousAI();
     this.startAIChatLoop();
   }
 
@@ -138,7 +159,7 @@ export class Room {
       this.broadcastState();
 
       // Clear the message after a few seconds
-      setTimeout(() => {
+      this.later(() => {
         if (bot.chatMessage === msg) {
           bot.chatMessage = undefined;
           this.broadcastState();
@@ -190,13 +211,18 @@ export class Room {
 
   public setPlayerRoom(playerId: string, roomId: MansionRoomId) {
     const player = this.players.get(playerId);
-    if (!player || !player.isAlive) return;
+    if (!player || !player.isAlive || this.phase !== 'ROLE_REVEAL' || !MANSION_ROOM_BOUNDS[roomId]) return;
+    Object.assign(player, getRoomCenter(roomId));
     player.currentRoomId = roomId;
     this.broadcastState();
     this.sendPrivateUpdate(playerId);
   }
 
   public removePlayer(playerId: string) {
+    if (this.phase !== 'LOBBY') return;
+    const ws = this.playerSockets.get(playerId);
+    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'SESSION_EXPIRED', message: 'O anfitrião removeu você da sala.' }));
+    this.playerTokens.delete(playerId);
     this.players.delete(playerId);
     this.playerSockets.delete(playerId);
     this.broadcastState();
@@ -212,7 +238,9 @@ export class Room {
 
   public startGame() {
     const playerList = Array.from(this.players.values());
-    if (playerList.length < 3) return false;
+    if (this.phase !== 'LOBBY' || playerList.length < 3 || playerList.length > 5) return false;
+    this.clearGameTimers();
+    this.investigationResults.clear();
 
     // Reset game state
     this.round = 1;
@@ -242,30 +270,7 @@ export class Room {
       return arr;
     };
 
-    const humanPlayers = playerList.filter((p) => !p.isBot);
-
-    let killer: Player;
-    let detective: Player;
-
-    if (humanPlayers.length >= 2) {
-      // Pick killer completely randomly from ALL players (human or bot)
-      const shuffledAll = shuffle(playerList);
-      killer = shuffledAll[0];
-
-      // Detective must be a human who is not the killer
-      const eligibleDetectives = shuffle(humanPlayers.filter((p) => p.id !== killer.id));
-      detective = eligibleDetectives[0];
-    } else if (humanPlayers.length === 1) {
-      // 1 human with bots: Human is Detective so they can vote; a bot is randomly picked as Killer
-      detective = humanPlayers[0];
-      const botKillers = shuffle(playerList.filter((p) => p.id !== detective.id));
-      killer = botKillers[0];
-    } else {
-      // Fallback for bot testing
-      const shuffled = shuffle(playerList);
-      detective = shuffled[0];
-      killer = shuffled[1];
-    }
+    const [killer, detective] = shuffle(playerList);
 
     killer.role = 'ASSASSINO';
     this.killerPlayerId = killer.id;
@@ -301,7 +306,7 @@ export class Room {
     this.broadcastPrivateUpdates();
 
     // Cinematic Intro sequence: automatically transitions to ROLE_REVEAL after 5 seconds
-    setTimeout(() => {
+    this.later(() => {
       if (this.phase === 'INTRO') {
         this.phase = 'ROLE_REVEAL';
         // Give 60 seconds so players can read comfortably without getting rushed
@@ -313,7 +318,7 @@ export class Room {
         // Simulate bots taking a few seconds to "read" their roles and click ready
         this.players.forEach((p) => {
           if (p.isBot) {
-            setTimeout(() => {
+            this.later(() => {
               if (this.phase === 'ROLE_REVEAL') {
                 p.hasRevealedRole = true;
                 this.broadcastState();
@@ -344,7 +349,7 @@ export class Room {
       this.timerMax = 3;
       this.broadcastState();
 
-      setTimeout(() => {
+      this.later(() => {
         if (this.phase === 'ROLE_REVEAL') {
           this.startRoundFlow();
         }
@@ -357,17 +362,30 @@ export class Room {
   }
 
   // Movement handler for live 2D map
-  public movePlayer(playerId: string, x: number, y: number, roomId?: MansionRoomId) {
+  public movePlayer(playerId: string, x: number, y: number, _roomId?: MansionRoomId) {
     const player = this.players.get(playerId);
-    if (!player || !player.isAlive) return;
-
-    const clamped = clampMansionPosition(x, y);
-    player.x = clamped.x;
-    player.y = clamped.y;
-    player.currentRoomId = roomId || getRoomAtPosition(clamped.x, clamped.y);
-    player.isMoving = true;
-
-    this.broadcastState();
+    if (!player || !player.isAlive || player.id === this.nightVictimId || this.phase !== 'NIGHT_KILLER') return;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    const now = Date.now();
+    const elapsed = Math.min(0.5, (now - (this.lastMovement.get(playerId) ?? now - 100)) / 1000);
+    const old = { x: player.x ?? 400, y: player.y ?? 250 };
+    const target = clampMansionPosition(x, y);
+    const distance = Math.hypot(target.x - old.x, target.y - old.y);
+    if (!player.isBot && distance > 280 * elapsed + 24) return;
+    if (!canWalkSegment(old, target)) {
+      // Between network samples a player may have legitimately rounded a corner.
+      const route = findMansionPath(old, target);
+      let length = 0, previous = old;
+      for (const point of route) { length += Math.hypot(point.x - previous.x, point.y - previous.y); previous = point; }
+      if (!route.length || Math.hypot(previous.x - target.x, previous.y - target.y) > 1 || length > 280 * elapsed + 24) return;
+    }
+    this.lastMovement.set(playerId, now);
+    Object.assign(player, target);
+    player.currentRoomId = getRoomAtPosition(target.x, target.y);
+    player.isMoving = distance > 0;
+    if (!this.movementFlush) this.movementFlush = this.later(() => {
+      this.movementFlush = null; this.broadcastState();
+    }, 75);
   }
 
   // Night Phase: Darkness falls, Assassin hunts on the map, everyone moves around
@@ -383,7 +401,12 @@ export class Room {
     this.nightCrimeRoomName = null;
     this.forensicEvidence = null;
     this.lastStabLocation = null;
-    this.nightKillHappened = false; // FIX: Reset so AI can kill again!
+    this.nightKillHappened = false;
+    this.lastMovement.clear();
+    this.investigationResults.clear();
+    this.currentEvent = null;
+    this.nightClue = '';
+    this.players.forEach(p => { p.hasUsedAbility = false; p.isMoving = false; });
 
     // Reset night choices and votes
     this.players.forEach((p) => {
@@ -396,7 +419,7 @@ export class Room {
     this.broadcastAudio('playNightFall');
 
     // Simulate bots walking around during the night (Among Us feel)
-    const botMoveInterval = setInterval(() => {
+    const botMoveInterval = this.repeat(() => {
       if (this.phase !== 'NIGHT_KILLER' && this.phase !== 'NIGHT_FALL') {
         clearInterval(botMoveInterval);
         return;
@@ -416,7 +439,7 @@ export class Room {
             }
           } else {
             // Filter targets to try and avoid the Detective if possible, unless no one else is left
-            let targets = this.getAlivePlayers().filter((t) => t.id !== p.id && t.role !== 'DETETIVE');
+            let targets = this.getAlivePlayers().filter((t) => t.id !== p.id);
             if (targets.length === 0) {
               targets = this.getAlivePlayers().filter((t) => t.id !== p.id);
             }
@@ -445,7 +468,9 @@ export class Room {
             const speed = 40;
             const nextX = px + Math.cos(angle) * speed;
             const nextY = py + Math.sin(angle) * speed;
-            this.movePlayer(p.id, nextX, nextY);
+            const route = findMansionPath({ x: px, y: py }, { x: tx, y: ty });
+            const step = route.find(point => Math.hypot(point.x - px, point.y - py) > 1);
+            if (step) this.movePlayer(p.id, step.x, step.y);
               }
             }
           }
@@ -458,10 +483,10 @@ export class Room {
           }
         }
       });
-    }, 1200);
+    }, 180);
 
     // 20-second timer for killer turn -> then transitions directly to daybreak
-    this.startTimer(20, () => {
+    this.startTimer(40, () => {
       clearInterval(botMoveInterval);
       this.startDayBreak();
     });
@@ -481,31 +506,22 @@ export class Room {
   ) {
     if (this.phase !== 'NIGHT_KILLER' && this.phase !== 'NIGHT_FALL') return;
     if (killerId !== this.killerPlayerId) return;
-    if (this.nightKillHappened) return; // Only 1 kill per night
+    if (this.nightKillHappened) return false;
 
     const target = this.players.get(targetPlayerId);
-    if (!target || !target.isAlive || target.id === killerId) return;
-
-    // REGRA CRÍTICA: Se o assassino atacar o Detetive, o Assassino perde imediatamente!
-    if (target.role === 'DETETIVE') {
-      this.nightVictimId = null;
-      this.winner = 'INVESTIGADORES';
-      this.gameOverReason = 'DETECTIVE_KILLED_KILLER';
-      this.gameOverMessage = `🚨 O ASSASSINO TENTOU ATACAR O DETETIVE (${target.name})! O Detetive estava armado, desarmou o Assassino e o prendeu em flagrante! VITÓRIA DOS INOCENTES E DO DETETIVE!`;
-      
-      this.broadcastAudio('playBoom');
-      this.endGame('INVESTIGADORES');
-      return;
-    }
+    const killer = this.players.get(killerId);
+    if (!target || !target.isAlive || !killer?.isAlive || target.id === killerId) return false;
+    if (Math.hypot((target.x ?? 0) - (killer.x ?? 0), (target.y ?? 0) - (killer.y ?? 0)) > 85) return false;
+    if (!canWalkSegment({ x: killer.x!, y: killer.y! }, { x: target.x!, y: target.y! })) return false;
 
     // Ataque bem-sucedido em um inocente
     this.nightKillHappened = true;
     this.nightVictimId = target.id;
-    this.nightCrimeRoomId = crimeRoomId || target.currentRoomId || 'kitchen';
+    this.nightCrimeRoomId = getRoomAtPosition(target.x ?? 400, target.y ?? 250);
     this.nightCrimeRoomName = getMansionRoom(this.nightCrimeRoomId).name;
 
-    const stabX = x !== undefined ? x : target.x || 400;
-    const stabY = y !== undefined ? y : target.y || 250;
+    const stabX = target.x ?? 400;
+    const stabY = target.y ?? 250;
 
     this.lastStabLocation = {
       x: stabX,
@@ -517,7 +533,7 @@ export class Room {
     };
 
     // Toca som de facada
-    this.broadcastAudio('playKnifeSlash');
+    this.sendPrivateUpdate(target.id, { isNightVictim: true });
 
     // TEMPO DE FUGA DO ASSASSINO:
     // Garante pelo menos 6 segundos para fugir e forjar álibi
@@ -527,6 +543,7 @@ export class Room {
 
     this.broadcastState();
     this.broadcastPrivateUpdates();
+    return true;
   }
 
   // Detective role is removed as requested by user - straight to Day Break
@@ -536,6 +553,7 @@ export class Room {
 
   public startDayBreak() {
     if (this.timerInterval) clearInterval(this.timerInterval);
+    this.players.forEach(p => { p.isMoving = false; });
     this.phase = 'DAY_BREAK';
     this.timerSeconds = 6;
     this.timerMax = 6;
@@ -585,8 +603,7 @@ export class Room {
           crimeRoomId,
           crimeRoomName,
           victimName: victim.name,
-          killerEscapeRoomId,
-          killerEscapeRoomName,
+
           weaponTrace,
           physicalEvidence,
           escapeRouteClue,
@@ -621,29 +638,30 @@ export class Room {
     const aliveInnocents = alivePlayers.filter((p) => p.role !== 'ASSASSINO');
 
     if (!aliveKiller) {
-      this.winner = 'INVESTIGADORES';
-      this.phase = 'GAME_OVER';
-      this.broadcastState();
+      this.endGame('INVESTIGADORES');
       return;
     }
 
-    if (aliveInnocents.length <= 1) {
-      this.winner = 'ASSASSINO';
-      this.phase = 'GAME_OVER';
-      this.broadcastState();
+    if (aliveInnocents.length === 0) {
+      this.endGame('ASSASSINO');
       return;
     }
 
-    // After 12s of crime scene and mansion map reveal, transition to Discussion
+    // Record everyone’s alibi before the discussion.
     this.startTimer(12, () => {
-      this.startDiscussionPhase();
+      this.startQuestionPhase();
     });
   }
 
   public startQuestionPhase() {
     // Select question
-    const qIndex = (this.round - 1 + Math.floor(Math.random() * 4)) % QUESTIONS_DATABASE.length;
-    this.currentQuestion = QUESTIONS_DATABASE[qIndex];
+    this.currentQuestion = {
+      id: `alibi-${this.round}`, category: 'alibi', categoryLabel: 'DEPOIMENTO SOB SUSPEITA',
+      context: this.nightVictim ? `${this.nightVictim.name} não sobreviveu à noite. Sua versão ficará registrada.` : 'Todos sobreviveram. Mas alguém esconde o que tentou fazer.',
+      question: 'Onde você estava? Qual é o seu álibi?',
+      options: MANSION_ROOMS.map(r => `Eu estava na ${r.name}.`),
+      killerHint: 'Seu álibi pode ser uma mentira. Escolha uma versão e sustente-a durante o debate.',
+    };
 
     // Reset player answers
     this.players.forEach((p) => {
@@ -669,7 +687,7 @@ export class Room {
     this.players.forEach((p) => {
       if (p.isBot && p.isAlive) {
         const delay = 3000 + Math.random() * 8000;
-        setTimeout(() => {
+        this.later(() => {
           if (this.phase === 'ROUND_QUESTION' && !p.currentAnswer && this.currentQuestion) {
             const opts = this.currentQuestion.options;
             const chosen = opts[Math.floor(Math.random() * opts.length)];
@@ -684,23 +702,26 @@ export class Room {
     const player = this.players.get(playerId);
     if (!player || !player.isAlive || this.phase !== 'ROUND_QUESTION') return;
 
-    player.currentAnswer = answer;
+    if (typeof answer !== 'string' || !answer.trim() || player.currentAnswer !== undefined) return;
+    player.currentAnswer = answer.trim().slice(0, 180);
     player.answerTimestamp = Date.now();
 
     this.broadcastState();
+    this.sendPrivateUpdate(playerId);
 
     // Check if all alive players answered
     const alivePlayers = this.getAlivePlayers();
     const allAnswered = alivePlayers.every((p) => p.currentAnswer !== undefined);
     if (allAnswered) {
       if (this.timerInterval) clearInterval(this.timerInterval);
-      setTimeout(() => {
+      this.later(() => {
         this.revealAnswers();
       }, 1000);
     }
   }
 
   public revealAnswers() {
+    if (this.phase !== 'ROUND_QUESTION') return;
     if (this.timerInterval) clearInterval(this.timerInterval);
     this.phase = 'ROUND_REVEAL';
 
@@ -718,7 +739,7 @@ export class Room {
     this.broadcastState();
 
     // After 6 seconds of looking at answers, transition to Discussion
-    setTimeout(() => {
+    this.later(() => {
       this.startDiscussionPhase();
     }, 6500);
   }
@@ -731,7 +752,7 @@ export class Room {
     this.timerMax = 75;
 
     // Generate dynamic clue for this round
-    this.generateRoundClue();
+    // Alibis and the private investigation provide evidence; no fabricated factual clues.
 
     this.broadcastState();
     this.broadcastPrivateUpdates();
@@ -814,65 +835,39 @@ export class Room {
       this.tallyVotesAndReveal();
     });
 
-    // Simulate bot detective vote
-    const detective = this.players.get(this.detectivePlayerId || '');
-    if (detective && detective.isBot && detective.isAlive) {
-      const delay = 4000 + Math.random() * 8000;
-      setTimeout(() => {
-        if (this.phase === 'VOTING' && !detective.hasConfirmedVote) {
-          const aliveTargets = this.getAlivePlayers().filter((target) => target.id !== detective.id);
-          if (aliveTargets.length > 0) {
-            const chosen = aliveTargets[Math.floor(Math.random() * aliveTargets.length)];
-            this.submitVote(detective.id, chosen.id, true);
-          }
-        }
-      }, delay);
-    }
+    this.getAlivePlayers().filter(p => p.isBot).forEach(bot => {
+      this.later(() => {
+        if (this.phase !== 'VOTING') return;
+        const targets = this.getAlivePlayers().filter(p => p.id !== bot.id);
+        if (targets.length) this.submitVote(bot.id, targets[Math.floor(Math.random() * targets.length)].id, true);
+      }, 3000 + Math.random() * 6000);
+    });
   }
 
-  public submitVote(voterId: string, targetId: string, confirmImmediately: boolean = false) {
+  public submitVote(voterId: string, targetId: string, confirmImmediately = false) {
     const voter = this.players.get(voterId);
-    if (!voter || !voter.isAlive || this.phase !== 'VOTING') return;
-    
-    // ONLY DETECTIVE CAN VOTE
-    if (voter.role !== 'DETETIVE') return;
-
+    const target = this.players.get(targetId);
+    if (this.phase !== 'VOTING' || !voter?.isAlive || voter.hasConfirmedVote || !target?.isAlive || targetId === voterId) return;
     voter.votedTargetId = targetId;
-    if (confirmImmediately) {
-      voter.hasConfirmedVote = true;
-    }
-
-    this.activeVotesCount = voter.hasConfirmedVote ? 1 : 0;
-
-    this.broadcastState();
-    this.sendPrivateUpdate(voterId);
-
-    // Check if detective confirmed
-    if (voter.hasConfirmedVote) {
-      if (this.timerInterval) clearInterval(this.timerInterval);
-      setTimeout(() => {
-        this.tallyVotesAndReveal();
-      }, 1000);
-    }
+    if (confirmImmediately) this.confirmVote(voterId);
+    else this.sendPrivateUpdate(voterId);
   }
 
   public confirmVote(voterId: string) {
     const voter = this.players.get(voterId);
-    if (!voter || !voter.isAlive || this.phase !== 'VOTING') return;
-    if (voter.role !== 'DETETIVE') return;
-
+    if (this.phase !== 'VOTING' || !voter?.isAlive || voter.hasConfirmedVote || !voter.votedTargetId) return;
+    if (!this.players.get(voter.votedTargetId)?.isAlive) return;
     voter.hasConfirmedVote = true;
-    this.activeVotesCount = 1;
-    this.broadcastState();
-    this.sendPrivateUpdate(voterId);
-
-    if (this.timerInterval) clearInterval(this.timerInterval);
-    setTimeout(() => {
-      this.tallyVotesAndReveal();
-    }, 1000);
+    this.activeVotesCount = this.getAlivePlayers().filter(p => p.hasConfirmedVote).length;
+    this.broadcastState(); this.sendPrivateUpdate(voterId);
+    if (this.activeVotesCount === this.getAlivePlayers().length) {
+      if (this.timerInterval) clearInterval(this.timerInterval);
+      this.later(() => { if (this.phase === 'VOTING') this.tallyVotesAndReveal(); }, 1000);
+    }
   }
 
   public tallyVotesAndReveal() {
+    if (this.phase !== 'VOTING') return;
     if (this.timerInterval) clearInterval(this.timerInterval);
     this.phase = 'VOTE_REVEAL';
 
@@ -881,7 +876,7 @@ export class Room {
 
     this.getAlivePlayers().forEach((p) => {
       const targetId = p.votedTargetId;
-      if (targetId) {
+      if (targetId && p.hasConfirmedVote) {
         const target = this.players.get(targetId);
         if (target) {
           target.stats.votesReceived++;
@@ -903,7 +898,7 @@ export class Room {
     this.broadcastState();
 
     // Cinematic step-by-step reveal: advance step every 2.5 seconds
-    const interval = setInterval(() => {
+    const interval = this.repeat(() => {
       this.voteRevealStep++;
       this.broadcastState();
       this.sendAudioTrigger('VOTE_REVEAL');
@@ -911,7 +906,7 @@ export class Room {
       if (this.voteRevealStep >= votesList.length) {
         clearInterval(interval);
         // After votes revealed, determine most voted player
-        setTimeout(() => {
+        this.later(() => {
           this.executeVerdict(tally);
         }, 3000);
       }
@@ -954,7 +949,7 @@ export class Room {
     this.broadcastState();
 
     // Check Win/Loss conditions
-    setTimeout(() => {
+    this.later(() => {
       this.checkEndConditions();
     }, 6000);
   }
@@ -971,7 +966,7 @@ export class Room {
     }
 
     // Condition 2: Killer reaches round 3 or innocents equal 1 -> Killer Wins!
-    if (this.round >= this.maxRounds || aliveInnocents.length <= 1) {
+    if (this.round >= this.maxRounds || aliveInnocents.length === 0) {
       this.endGame('ASSASSINO');
       return;
     }
@@ -988,6 +983,7 @@ export class Room {
   }
 
   public endGame(winner: 'INVESTIGADORES' | 'ASSASSINO') {
+    this.clearGameTimers();
     this.phase = 'GAME_OVER';
     this.winner = winner;
 
@@ -998,71 +994,26 @@ export class Room {
   // Detective Investigation / Accusation Ability
   public useDetectiveAbility(detectiveId: string, targetId: string) {
     const detective = this.players.get(detectiveId);
-    if (!detective || detective.role !== 'DETETIVE' || !detective.isAlive) return;
-
     const target = this.players.get(targetId);
-    if (!target || target.id === detectiveId) return;
-
+    if (this.phase !== 'NIGHT_KILLER' || !detective?.isAlive || detective.id === this.nightVictimId || detective.role !== 'DETETIVE' || detective.hasUsedAbility || !target?.isAlive || target.id === detectiveId) return;
     detective.hasUsedAbility = true;
     const isKiller = target.role === 'ASSASSINO';
-
-    // Registra a acusação oficial do Detetive para ser exibida na TV
-    this.detectiveAccusation = {
-      detectiveName: detective.name,
-      accusedPlayerId: target.id,
-      accusedPlayerName: target.name,
-      isCorrect: isKiller,
-      timestamp: Date.now(),
-    };
-
-    // Informação pericial privada para o detetive
-    const privateData = this.getPrivateData(detectiveId);
-    if (privateData) {
-      privateData.detectiveInvestigationResult = {
-        targetName: target.name,
-        isKiller,
-        resultText: isKiller
-          ? `🚨 INVESTIGAÇÃO PRECISA: ${target.name} É O ASSASSINO! Convença os outros a votar nele!`
-          : `🔍 FICHA LIMPA: ${target.name} é INOCENTE. Não é o assassino!`,
-      };
-    }
-
-    this.broadcastAudio(isKiller ? 'playBoom' : 'playNotification');
-    this.broadcastState();
+    this.investigationResults.set(detectiveId, {
+      targetName: target.name, isKiller,
+      resultText: isKiller ? `${target.name} é o infiltrado. Convença o grupo sem mostrar sua tela.` : `${target.name} não é o infiltrado. Use essa informação no debate.`,
+    });
     this.sendPrivateUpdate(detectiveId);
   }
 
   public useKillerSabotage(killerId: string, sabotageId: string) {
     const killer = this.players.get(killerId);
-    if (!killer || killer.role !== 'ASSASSINO' || killer.hasUsedAbility) return;
-
+    if (!killer?.isAlive || killer.role !== 'ASSASSINO' || killer.hasUsedAbility || this.phase !== 'DISCUSSION' || sabotageId !== 'FALSE_CLUE') return;
+    const targets = this.getAlivePlayers().filter(p => p.id !== killerId);
+    if (!targets.length) return;
     killer.hasUsedAbility = true;
-    this.pendingSabotage = sabotageId;
-
-    if (sabotageId === 'FALSE_CLUE') {
-      const innocents = this.getAlivePlayers().filter((p) => p.role !== 'ASSASSINO');
-      if (innocents.length > 0) {
-        const rand = innocents[Math.floor(Math.random() * innocents.length)];
-        this.clues.push({
-          id: `sabotage-${Date.now()}`,
-          round: this.round,
-          type: 'behavior',
-          text: `[ALERTA ANÔNIMO]: Há rumores de que ${rand.name} estava manipulando as evidências.`,
-        });
-        this.broadcastState();
-      }
-    } else if (sabotageId === 'BLACKOUT') {
-      this.currentEvent = {
-        id: 'sabotage_blackout',
-        title: 'SABOTAGEM NO CIRCUITO',
-        flavorText: 'O assassino provocou um curto circuito manual!',
-        description: 'Luzes piscando e tensão no ar.',
-        type: 'blackout',
-      };
-      this.broadcastState();
-    }
-
-    this.sendPrivateUpdate(killerId);
+    const target = targets[Math.floor(Math.random() * targets.length)];
+    this.currentEvent = { id: 'sabotage_rumor', title: 'BOATO ANÔNIMO', type: 'anonymous_tip', flavorText: 'Uma mensagem apareceu na mansão.', description: `Alguém diz que ${target.name} foi visto perto da cena do crime.` };
+    this.broadcastState(); this.sendPrivateUpdate(killerId);
   }
 
   private startTimer(duration: number, onComplete: () => void) {
@@ -1070,7 +1021,7 @@ export class Room {
     this.timerSeconds = duration;
     this.timerMax = duration;
 
-    this.timerInterval = setInterval(() => {
+    this.timerInterval = this.repeat(() => {
       this.timerSeconds--;
       if (this.timerSeconds <= 0) {
         if (this.timerInterval) clearInterval(this.timerInterval);
@@ -1083,7 +1034,9 @@ export class Room {
     }, 1000);
   }
 
-  public getPublicState(): PublicGameState {
+  public getPublicState(viewerId?: string): PublicGameState {
+    const night = this.phase === 'NIGHT_KILLER' || this.phase === 'NIGHT_FALL';
+    const viewer = viewerId ? this.players.get(viewerId) : undefined;
     const playerList = Array.from(this.players.values()).map((p) => ({
       id: p.id,
       name: p.name,
@@ -1092,11 +1045,11 @@ export class Room {
       isAlive: p.isAlive,
       hasRevealedRole: p.hasRevealedRole,
       connected: p.connected,
-      currentRoomId: p.currentRoomId,
-      x: p.x,
-      y: p.y,
-      isMoving: p.isMoving,
-      direction: p.direction,
+      currentRoomId: night && p.id !== viewerId ? undefined : p.currentRoomId,
+      x: night && (!viewer || (p.id !== viewerId && Math.hypot((p.x ?? 0) - (viewer.x ?? 0), (p.y ?? 0) - (viewer.y ?? 0)) > 170)) ? undefined : p.x,
+      y: night && (!viewer || (p.id !== viewerId && Math.hypot((p.x ?? 0) - (viewer.x ?? 0), (p.y ?? 0) - (viewer.y ?? 0)) > 170)) ? undefined : p.y,
+      isMoving: !night || p.id === viewerId ? p.isMoving : undefined,
+      direction: !night || p.id === viewerId ? p.direction : undefined,
       hasAnswered: p.currentAnswer !== undefined,
       hasVoted: p.hasConfirmedVote,
       eliminatedRole: !p.isAlive ? p.role : undefined,
@@ -1149,7 +1102,7 @@ export class Room {
       timerSeconds: this.timerSeconds,
       timerMax: this.timerMax,
       players: playerList,
-      lastStabLocation: this.lastStabLocation || undefined,
+      lastStabLocation: night ? undefined : this.lastStabLocation || undefined,
       currentQuestion: this.currentQuestion
         ? {
             id: this.currentQuestion.id,
@@ -1164,20 +1117,20 @@ export class Room {
       clues: [], // Clues are now private to the Detective
       activeVotesCount: this.activeVotesCount,
       voteRevealStep: this.voteRevealStep,
-      revealedVotes: this.revealedVotes,
+      revealedVotes: this.revealedVotes.slice(0, this.voteRevealStep),
       eliminatedPlayerId: this.eliminatedPlayer?.id,
       eliminatedPlayer: this.eliminatedPlayer || undefined,
-      nightVictim: this.nightVictim || undefined,
-      nightCrimeRoomId: this.nightCrimeRoomId || undefined,
-      nightCrimeRoomName: this.nightCrimeRoomName || undefined,
+      nightVictim: night ? undefined : this.nightVictim || undefined,
+      nightCrimeRoomId: night ? undefined : this.nightCrimeRoomId || undefined,
+      nightCrimeRoomName: night ? undefined : this.nightCrimeRoomName || undefined,
       nightClue: this.nightClue || undefined,
       forensicEvidence: this.forensicEvidence || undefined,
       winner: this.winner || undefined,
       gameOverReason: this.gameOverReason || undefined,
       gameOverMessage: this.gameOverMessage || undefined,
-      detectiveAccusation: this.detectiveAccusation || undefined,
-      nightKillHappened: this.nightKillHappened,
-      killerEscapedToRoomId: this.forensicEvidence?.killerEscapeRoomId || undefined,
+      detectiveAccusation: undefined,
+      nightKillHappened: night ? undefined : this.nightKillHappened,
+      killerEscapedToRoomId: undefined,
       killerPlayer:
         this.phase === 'GAME_OVER' && killer
           ? {
@@ -1214,9 +1167,9 @@ export class Room {
     }
 
     // Send to all player sockets
-    this.playerSockets.forEach((ws) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(payload);
+    this.playerSockets.forEach((ws, id) => {
+      if (ws.readyState === WebSocket.OPEN && ws.bufferedAmount < 128 * 1024) {
+        ws.send(JSON.stringify({ type: 'STATE_UPDATE', state: this.getPublicState(id) }));
       }
     });
   }
@@ -1230,16 +1183,17 @@ export class Room {
       roomCode: this.code,
       phase: this.phase,
       killerHint: player.role === 'ASSASSINO' ? (this.currentQuestion?.killerHint || 'Aja em silêncio. A noite é sua aliada.') : undefined,
-      isNightVictim: !player.isAlive && this.nightVictim?.id === player.id,
+      isNightVictim: this.nightVictimId === player.id,
+      detectiveInvestigationResult: this.investigationResults.get(player.id),
       nightActionSubmitted: !!this.nightVictimId && player.role === 'ASSASSINO',
       nightTargetId: player.role === 'ASSASSINO' ? (this.nightVictimId || undefined) : undefined,
       hasUsedAbility: player.hasUsedAbility,
       canUseAbility:
         !player.hasUsedAbility &&
         player.isAlive &&
-        player.role === 'ASSASSINO' &&
+        (player.role === 'ASSASSINO' || player.role === 'DETETIVE') &&
         (this.phase === 'DISCUSSION' || this.phase === 'NIGHT_KILLER' || this.phase === 'NIGHT_FALL'),
-      availableSabotages: player.role === 'ASSASSINO' ? SABOTAGE_OPTIONS : undefined,
+      availableSabotages: player.role === 'ASSASSINO' ? SABOTAGE_OPTIONS.filter(s => s.id === 'FALSE_CLUE') : undefined,
       detectiveClues: player.role === 'DETETIVE' ? this.clues : undefined,
       ...overrides,
     };
@@ -1282,7 +1236,7 @@ export class Room {
   }
 
   public addBotPlayer(): Player | null {
-    if (this.players.size >= 5) return null;
+    if (this.phase !== 'LOBBY' || this.players.size >= 5) return null;
     const existingNames = Array.from(this.players.values()).map((p) => p.name);
     const availableName = BOT_NAMES.find((n) => !existingNames.includes(n)) || `Agente ${this.players.size + 1}`;
     const botId = `bot_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
@@ -1295,6 +1249,10 @@ export class Room {
       this.startRoundFlow();
     } else if (this.phase === 'NIGHT_KILLER' || this.phase === 'NIGHT_FALL') {
       this.startDayBreak();
+    } else if (this.phase === 'CRIME_SCENE') {
+      this.startQuestionPhase();
+    } else if (this.phase === 'ROUND_REVEAL') {
+      this.clearGameTimers(); this.startDiscussionPhase();
     } else if (this.phase === 'ROUND_QUESTION') {
       this.revealAnswers();
     } else if (this.phase === 'DISCUSSION') {
@@ -1305,6 +1263,13 @@ export class Room {
   }
 
   public restartGame() {
+    this.clearGameTimers(); this.movementFlush = null;
+    this.investigationResults.clear(); this.lastMovement.clear();
+    this.nightVictimId = null; this.nightVictim = null; this.nightCrimeRoomId = null; this.nightCrimeRoomName = null;
+    this.killerPlayerId = null; this.detectivePlayerId = null;
+    this.currentQuestion = null; this.currentEvent = null; this.pendingSabotage = null;
+    this.activeVotesCount = 0; this.revealedVotes = []; this.voteRevealStep = 0;
+    this.timerSeconds = 0;
     if (this.timerInterval) clearInterval(this.timerInterval);
     this.phase = 'LOBBY';
     this.round = 0;
@@ -1313,7 +1278,7 @@ export class Room {
     this.gameOverReason = null;
     this.gameOverMessage = null;
     this.eliminatedPlayer = null;
-    this.nightClue = null;
+    this.nightClue = '';
     this.forensicEvidence = null;
     this.lastStabLocation = null;
     this.nightKillHappened = false;
@@ -1328,8 +1293,8 @@ export class Room {
       p.currentAnswer = undefined;
       p.votedTargetId = undefined;
       p.currentRoomId = 'living';
-      p.x = undefined;
-      p.y = undefined;
+      Object.assign(p, getRoomCenter('living'));
+      p.stats = { votesReceived: 0, votesCastAgainstKiller: 0, correctAccusations: 0, survivedRounds: 0 };
       p.privateNotes = [];
     });
     this.broadcastState();
@@ -1337,12 +1302,22 @@ export class Room {
   }
 
   public cleanup() {
-    if (this.timerInterval) clearInterval(this.timerInterval);
+    this.clearGameTimers();
+    if (this.aiChatInterval) clearInterval(this.aiChatInterval);
   }
 }
 
 export class GameManager {
   private rooms: Map<string, Room> = new Map();
+
+  constructor() {
+    setInterval(() => {
+      this.rooms.forEach(room => {
+        const connected = room.hostSocket?.readyState === WebSocket.OPEN || [...room.playerSockets.values()].some(ws => ws.readyState === WebSocket.OPEN);
+        if (!connected && Date.now() - room.lastActiveAt > 60 * 60 * 1000) this.removeRoom(room.code);
+      });
+    }, 5 * 60 * 1000).unref();
+  }
 
   public createRoom(): Room {
     let code = '';
@@ -1356,7 +1331,9 @@ export class GameManager {
   }
 
   public getRoom(code: string): Room | undefined {
-    return this.rooms.get(code.toUpperCase());
+    const room = this.rooms.get(code.toUpperCase());
+    if (room) room.lastActiveAt = Date.now();
+    return room;
   }
 
   public removeRoom(code: string) {

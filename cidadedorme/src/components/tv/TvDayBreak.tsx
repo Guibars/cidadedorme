@@ -13,7 +13,7 @@ export function TvDayBreak({ state }: TvDayBreakProps) {
   }, []);
 
   return (
-    <div className="flex-1 w-full max-w-5xl mx-auto px-6 py-12 flex flex-col justify-center items-center text-center bg-[#141414] relative overflow-hidden">
+    <div className="flex-1 w-full max-w-5xl mx-auto px-6 py-12 flex flex-col justify-center items-center text-center bg-[#080f14] relative overflow-hidden">
       {/* Sunrise Ambient Glow */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-amber-600/15 rounded-t-full blur-[140px] animate-pulse" />

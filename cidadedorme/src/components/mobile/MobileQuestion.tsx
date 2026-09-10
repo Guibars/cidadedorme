@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { Player, QuestionScenario } from '../../types';
+import { Player, PublicGameState } from '../../types';
 import { Check, HelpCircle, Flame, ShieldAlert } from 'lucide-react';
 import { sound } from '../../utils/audio';
 
 interface MobileQuestionProps {
   player: Player;
-  question: QuestionScenario;
+  question: NonNullable<PublicGameState['currentQuestion']>;
   killerHint?: string;
   onSubmitAnswer: (answer: string) => void;
 }
@@ -17,7 +17,7 @@ export function MobileQuestion({
   onSubmitAnswer,
 }: MobileQuestionProps) {
   const [selectedOption, setSelectedOption] = useState<string | null>(player.currentAnswer || null);
-  const [isSubmitted, setIsSubmitted] = useState<boolean>(Boolean(player.currentAnswer));
+  const isSubmitted = Boolean(player.currentAnswer);
 
   const handleSelect = (option: string) => {
     if (isSubmitted) return;
@@ -28,7 +28,6 @@ export function MobileQuestion({
 
   const handleConfirm = () => {
     if (!selectedOption || isSubmitted) return;
-    setIsSubmitted(true);
     sound.playClick();
     sound.triggerVibrate([40, 80]);
     onSubmitAnswer(selectedOption);

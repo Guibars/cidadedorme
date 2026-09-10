@@ -8,9 +8,8 @@ interface TvVotingPhaseProps {
 
 export function TvVotingPhase({ state, onAdvance }: TvVotingPhaseProps) {
   const votedCount = state.activeVotesCount;
-  const allVoted = votedCount >= 1; // Only 1 vote now (the detective)
-  const detectivePlayer = state.players.find(p => p.role === 'DETETIVE');
-  const detectiveAlive = detectivePlayer?.isAlive;
+  const aliveCount = state.players.filter(p => p.isAlive).length;
+  const allVoted = votedCount >= aliveCount;
 
   return (
     <div className="flex-1 w-full max-w-4xl mx-auto px-6 py-8 flex flex-col justify-between items-center text-center">
@@ -18,15 +17,13 @@ export function TvVotingPhase({ state, onAdvance }: TvVotingPhaseProps) {
       <div>
         <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-bold uppercase tracking-wider mb-4">
           <Vote className="w-3.5 h-3.5" />
-          VOTO OFICIAL DO DETETIVE
+          O JULGAMENTO DO GRUPO
         </div>
         <h2 className="text-4xl md:text-6xl font-black uppercase tracking-wider font-['Cinzel'] text-neutral-100">
           QUEM SERÁ PRESO?
         </h2>
         <p className="mt-3 text-base md:text-lg text-neutral-400 max-w-xl mx-auto">
-          {detectiveAlive 
-            ? 'O Detetive está tomando a decisão final no celular.' 
-            : 'O Detetive está morto! O tribunal decidirá através de um sorteio caótico.'}
+          Todos os sobreviventes votam no celular. Em quem você confia?
         </p>
       </div>
 
@@ -36,16 +33,12 @@ export function TvVotingPhase({ state, onAdvance }: TvVotingPhaseProps) {
           STATUS DA DECISÃO
         </div>
         <div className="text-5xl md:text-7xl font-black font-mono tracking-tight text-neutral-100 py-4">
-          {allVoted ? (
-             <span className="text-cyan-400">VOTO REGISTRADO</span>
-          ) : (
-             <span className="text-neutral-600 animate-pulse">AGUARDANDO...</span>
-          )}
+          <span className="text-amber-400">{votedCount} <span className="text-neutral-500">/ {aliveCount}</span></span>
         </div>
         <p className="text-sm text-neutral-400 mt-3 font-medium">
           {allVoted
             ? 'A decisão foi tomada. Preparando revelação...'
-            : 'O Detetive está avaliando as pistas...'}
+            : 'Aguardando os votos secretos do grupo…'}
         </p>
       </div>
 

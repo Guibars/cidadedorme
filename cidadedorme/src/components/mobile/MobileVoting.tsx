@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Player, PublicGameState } from '../../types';
 import { Vote, Check, ShieldCheck, X } from 'lucide-react';
 import { sound } from '../../utils/audio';
@@ -19,7 +19,7 @@ export function MobileVoting({
 }: MobileVotingProps) {
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(player.votedTargetId || null);
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
-  const [isConfirmed, setIsConfirmed] = useState<boolean>(player.hasConfirmedVote);
+  const isConfirmed = player.hasConfirmedVote;
 
   const targets = state.players.filter((p) => p.id !== player.id && p.isAlive);
   const selectedPlayer = state.players.find((p) => p.id === selectedTargetId);
@@ -39,7 +39,6 @@ export function MobileVoting({
   };
 
   const handleConfirmYes = () => {
-    setIsConfirmed(true);
     setShowConfirmModal(false);
     sound.playClick();
     sound.triggerVibrate([50, 100]);
@@ -51,37 +50,19 @@ export function MobileVoting({
     sound.playClick();
   };
 
-  const isDetective = player.role === 'DETETIVE';
-
-  if (!isDetective) {
-    return (
-      <div className="min-h-screen w-full flex flex-col items-center justify-center p-6 text-center bg-neutral-950 text-neutral-100">
-        <div className="w-20 h-20 rounded-full bg-cyan-900/30 border border-cyan-500/50 flex items-center justify-center text-cyan-400 mb-6">
-          <ShieldCheck className="w-10 h-10" />
-        </div>
-        <h2 className="text-2xl font-black uppercase tracking-wider text-cyan-100 font-['Cinzel'] mb-4">
-          Aguardando o Detetive
-        </h2>
-        <p className="text-sm text-neutral-400 max-w-xs leading-relaxed">
-          Apenas o Detetive oficial possui autoridade para dar o voto final e ordenar a prisão de um suspeito. Aguarde a decisão!
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen w-full flex flex-col justify-between p-5 max-w-md mx-auto bg-neutral-950 text-neutral-100">
       {/* Top Banner */}
       <div className="pt-2 text-center">
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-bold uppercase tracking-wider mb-2">
           <ShieldCheck className="w-3.5 h-3.5" />
-          VOTO OFICIAL DO DETETIVE
+          SEU VOTO É SECRETO
         </div>
         <h2 className="text-2xl font-black uppercase font-['Cinzel'] tracking-wide text-neutral-100">
           Quem você vai prender?
         </h2>
         <p className="text-xs text-neutral-400 mt-1">
-          Toque no cartão do suspeito para dar o voto final da equipe.
+          Escolha um suspeito. Todos os sobreviventes têm um voto.
         </p>
       </div>
 

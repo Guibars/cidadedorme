@@ -2,5 +2,5 @@
   "name": "O Infiltrado - Jogo de Dedução Social",
   "description": "Jogo multiplayer de dedução social e suspense para TV e smartphones. Descubra o assassino entre seus amigos em partidas com pistas, sabotagens e reviravoltas.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": []
 }

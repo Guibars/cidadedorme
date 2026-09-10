@@ -56,12 +56,12 @@ export interface MansionRoomBounds {
 }
 
 export const MANSION_ROOM_BOUNDS: Record<MansionRoomId, MansionRoomBounds> = {
-  bedroom: { id: 'bedroom', x: 30, y: 30, w: 220, h: 180, doorX: 250, doorY: 120 },
-  kitchen: { id: 'kitchen', x: 550, y: 30, w: 220, h: 180, doorX: 550, doorY: 120 },
-  living: { id: 'living', x: 280, y: 130, w: 240, h: 190, doorX: 400, doorY: 130 },
-  library: { id: 'library', x: 30, y: 290, w: 220, h: 180, doorX: 250, doorY: 380 },
-  garden: { id: 'garden', x: 550, y: 290, w: 220, h: 180, doorX: 550, doorY: 380 },
-  basement: { id: 'basement', x: 280, y: 350, w: 240, h: 120, doorX: 400, doorY: 350 },
+  bedroom: { id: 'bedroom', x: 20, y: 20, w: 215, h: 165, doorX: 235, doorY: 110 },
+  kitchen: { id: 'kitchen', x: 565, y: 20, w: 215, h: 165, doorX: 565, doorY: 110 },
+  living: { id: 'living', x: 285, y: 90, w: 235, h: 200, doorX: 285, doorY: 205 },
+  library: { id: 'library', x: 20, y: 280, w: 215, h: 180, doorX: 235, doorY: 380 },
+  garden: { id: 'garden', x: 565, y: 280, w: 215, h: 180, doorX: 565, doorY: 380 },
+  basement: { id: 'basement', x: 285, y: 350, w: 235, h: 130, doorX: 400, doorY: 350 },
 };
 
 export function getMansionRoom(id?: MansionRoomId): MansionRoom {

@@ -1,48 +1,31 @@
-# Como Hospedar "O Infiltrado" Grátis (Railway / Render / Fly.io)
+# Atualização do jogo no servidor
 
-Este jogo foi desenvolvido em **Node.js + Express + WebSockets + Vite/React**. Ele já vem totalmente preparado para produção (`npm run build` compila tanto o frontend quanto o servidor em `dist/server.cjs`).
+A entrega contém o código e as imagens. `node_modules` e `dist` não precisam ser enviados ao GitHub.
 
----
+## Configuração do serviço existente
 
-## Opção 1: Render.com (100% Gratuito) - Recomendado
+O jogo precisa de um processo Node.js com HTTP e WebSocket habilitados. Use Node.js 22 ou superior e um único processo/instância.
 
-1. **Exportar o Código:**
-   - No Google AI Studio, clique no menu superior e selecione **Export to GitHub** (ou baixe como ZIP e suba em um repositório seu no GitHub).
+```sh
+npm ci
+npm run build
+npm start
+```
 
-2. **Criar o Serviço no Render:**
-   - Acesse [https://render.com](https://render.com) e faça login gratuito com sua conta GitHub.
-   - Clique em **New +** e selecione **Web Service**.
-   - Escolha o repositório do jogo.
+O build gera `dist` no próprio servidor. A inicialização usa o modo de produção. O serviço pode definir a porta pela variável `PORT`; o padrão é 3000. A rota de saúde é `/api/health`, e a conexão WebSocket usa `/ws`.
 
-3. **Configurar os Comandos:**
-   - **Name:** `o-infiltrado` (ou o que preferir)
-   - **Language:** `Node`
-   - **Branch:** `main`
-   - **Build Command:** `npm run build`
-   - **Start Command:** `npm start`
-   - **Instance Type:** `Free`
+Se houver um proxy, ele deve encaminhar conexões WebSocket e manter a aplicação no mesmo domínio da página. Para jogar pela internet, abra o endereço HTTPS do serviço na TV e nos celulares.
 
-4. **Deploy:**
-   - Clique em **Create Web Service**.
-   - Em 1 a 2 minutos, o Render fornecerá sua URL pública (exemplo: `https://o-infiltrado.onrender.com`).
-   - Abra essa URL na sua TV ou notebook. O QR Code gerado funcionará instantaneamente em qualquer iPhone e Android conectado à internet, sem pedir login ou senha!
+## O que enviar ao GitHub
 
----
+Envie os arquivos de código e configuração, o `package-lock.json`, os testes e a pasta `public/art`. Mantenha `.gitignore`. Não envie pastas de dependências, arquivos de ambiente com segredos ou a pasta de build.
 
-## Opção 2: Railway.app (Rápido e Automático)
+Atualize pelo seu fluxo normal no GitHub e deixe o serviço executar a instalação e o build novamente. Nenhuma publicação foi feita automaticamente nesta reformulação.
 
-1. Acesse [https://railway.app](https://railway.app) e conecte com o GitHub.
-2. Clique em **+ New Project** -> **Deploy from GitHub repo**.
-3. Selecione o repositório do jogo.
-4. O Railway detectará o Node.js e executará `npm run build` e `npm start` automaticamente.
-5. Nas configurações do serviço (**Settings**), vá na seção **Networking** e clique em **Generate Domain**.
-6. Pronto! Sua URL pública no Railway estará online 24 horas por dia.
+## Rede local
 
----
+Em desenvolvimento (`npm run dev`), abra `http://localhost:3000` no computador. O QR Code usa um endereço IPv4 da rede local, quando disponível. Se houver VPN ou mais de uma interface, abra a página usando o IP correto do computador antes de gerar o convite. Os celulares precisam estar na mesma rede e o firewall precisa permitir a porta da aplicação.
 
-## Opção 3: Usar no Próprio Google AI Studio (Sem instalar nada)
+## Estado das salas
 
-Se você quiser jogar agora mesmo diretamente pelo AI Studio:
-- **Por que deu "Page Not Found" no iPhone?**
-  A URL pública com prefixo `ais-pre-*` só fica ativa após você clicar no botão **"Share" (Compartilhar)** ou **"Deploy"** no canto superior direito do Google AI Studio.
-- Assim que você clica em **Compartilhar**, o Google provisiona o link público para todos os convidados poderem jogar via Safari/Chrome sem solicitar login.
+As salas existem em memória. Um deploy ou reinício interrompe partidas em andamento. Não use múltiplas instâncias sem implementar armazenamento e distribuição compartilhados. Salas sem conexões e sem atividade expiram após uma hora.

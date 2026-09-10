@@ -42,6 +42,7 @@ export default function App() {
   const {
     isConnected,
     isCreatingRoom,
+    isJoiningRoom,
     publicState,
     privateData,
     playerId,
@@ -69,15 +70,18 @@ export default function App() {
 
   // Switch between TV and Player mode
   const handleSwitchMode = (newMode: 'tv' | 'player') => {
-    sound.playClick();
-    setMode(newMode);
+    if (newMode === mode) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set('role', newMode === 'player' ? 'player' : 'tv');
+    if (publicState?.roomCode) url.searchParams.set('room', publicState.roomCode);
+    window.location.assign(url);
   };
 
   const handleOpenMobileTab = () => {
     sound.playClick();
     const code = publicState?.roomCode || '';
     const mobileUrl = `${window.location.origin}${window.location.pathname}?role=player${code ? `&room=${code}` : ''}`;
-    window.open(mobileUrl, '_blank');
+    window.open(mobileUrl, '_blank', 'noopener');
   };
 
   // ----------------------------------------------------
@@ -86,22 +90,10 @@ export default function App() {
   if (mode === 'player') {
     if (!myPlayer || !publicState) {
       return (
-        <div className="min-h-screen bg-[#141414] flex flex-col justify-between">
-          <div className="p-3 bg-black/60 border-b border-neutral-800 flex items-center justify-between text-xs text-neutral-400">
-            <div className="flex items-center gap-1.5">
-              <span className="text-[#E50914] font-black text-base font-['Bebas_Neue',sans-serif]">N</span>
-              <span className="font-bold text-white uppercase tracking-wider text-xs">O INFILTRADO</span>
-            </div>
-            <button
-              onClick={() => handleSwitchMode('tv')}
-              className="px-2.5 py-1 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-200 flex items-center gap-1.5 cursor-pointer text-[11px]"
-            >
-              <Tv className="w-3.5 h-3.5" />
-              <span>Ver Tela TV</span>
-            </button>
-          </div>
-
+        <div className="mobile-shell">
+          <nav className="game-nav"><span className="brand"><Eye size={22}/> O INFILTRADO</span><button className="button-quiet" onClick={() => handleSwitchMode('tv')}><Tv size={14}/>Tela principal</button></nav>
           <MobileJoin
+            isJoining={isJoiningRoom}
             initialRoomCode={initialRoom}
             onJoin={joinRoom}
             errorMessage={errorMessage}
@@ -112,7 +104,11 @@ export default function App() {
 
     // Inside a room as player
     return (
-      <div className="min-h-screen bg-neutral-950 flex flex-col">
+      <div className="mobile-shell">
+        {!isConnected && <div className="connection-banner" role="status">Reconectando… mantenha esta tela aberta.</div>}
+        {errorMessage && <div className="error-banner" role="alert">{errorMessage}</div>}
+        {!myPlayer.isAlive && publicState.phase !== 'LOBBY' ? <MobileSpectator player={myPlayer} state={publicState} onLeaveRoom={leaveRoom}/> : <>
+
         {publicState.phase === 'LOBBY' && (
           <MobileWaiting player={myPlayer} roomCode={publicState.roomCode} />
         )}
@@ -139,8 +135,7 @@ export default function App() {
         )}
 
         {(publicState.phase === 'NIGHT_FALL' ||
-          publicState.phase === 'NIGHT_KILLER' ||
-          publicState.phase === 'NIGHT_DETECTIVE') && privateData && (
+          publicState.phase === 'NIGHT_KILLER') && privateData && (
           <MobileNightAction
             privateData={privateData}
             publicState={publicState}
@@ -212,6 +207,7 @@ export default function App() {
             onLeaveRoom={leaveRoom}
           />
         )}
+        </>}
       </div>
     );
   }
@@ -220,43 +216,16 @@ export default function App() {
   // TV / NOTEBOOK (HOST) VIEW
   // ----------------------------------------------------
   return (
-    <div className="h-screen w-full bg-[#141414] text-neutral-100 flex flex-col relative overflow-hidden selection:bg-[#E50914] selection:text-white">
-      {/* Presentation Bar (Netflix Black) */}
-      <div className="w-full px-4 py-2 bg-black/80 border-b border-neutral-800 flex items-center justify-between text-xs z-50">
-        <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
-          <span className="text-base font-black text-[#E50914] font-['Bebas_Neue',sans-serif] leading-none">
-            N
-          </span>
-          <span className="font-bold text-white uppercase tracking-wider text-xs">
-            O INFILTRADO
-          </span>
-          <span className="text-neutral-600 hidden sm:inline">|</span>
-          <span className="text-neutral-400 hidden sm:inline text-[11px]">Tela Principal da TV / Smart TV</span>
+    <div className="game-app">
+      <nav className="game-nav">
+        <span className="brand"><Eye size={25}/>O INFILTRADO<small>UM JOGO DE DEDUÇÃO SOCIAL</small></span>
+        <div className="nav-actions"><span className={`connection-status ${isConnected ? '' : 'offline'}`}><span className="status-dot"/>{isConnected ? 'CONECTADO' : 'RECONECTANDO'}</span>
+          {publicState && <button className="button-quiet open-controller" onClick={handleOpenMobileTab}><ExternalLink size={14}/>Abrir controle</button>}
+          <button className="button-quiet" onClick={() => handleSwitchMode('player')}><Smartphone size={15}/>Entrar na partida</button>
         </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleOpenMobileTab}
-            className="px-3 py-1 rounded bg-[#222222] hover:bg-[#2e2e2e] text-neutral-200 hover:text-white border border-neutral-700 flex items-center gap-1.5 cursor-pointer transition-colors text-xs font-semibold"
-            title="Abre a tela de jogador em nova aba para testar a conexão celular"
-          >
-            <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
-            <span>Abrir Controle Celular (Nova Aba)</span>
-          </button>
-
-          <button
-            onClick={() => handleSwitchMode('player')}
-            className="px-3 py-1 rounded bg-[#E50914]/20 hover:bg-[#E50914]/30 text-red-300 border border-[#E50914]/50 flex items-center gap-1.5 cursor-pointer transition-colors text-xs font-bold"
-          >
-            <Smartphone className="w-3.5 h-3.5" />
-            <span>Alternar para Celular</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Main TV Screen Content */}
-      <main className="flex-1 flex flex-col relative z-10">
+      </nav>
+      {errorMessage && <div className="error-banner" role="alert">{errorMessage}</div>}
+      <main className="app-main">
         {!publicState ? (
           <TvHome
             onCreateRoom={createRoom}
@@ -264,7 +233,7 @@ export default function App() {
             onSwitchToPlayer={() => handleSwitchMode('player')}
           />
         ) : (
-          <div className="flex-1 flex flex-col">
+          <div className="game-flow">
             <TvHeader state={publicState} onRestart={restartGame} />
 
             {publicState.phase === 'LOBBY' && (
@@ -283,8 +252,7 @@ export default function App() {
             )}
 
             {(publicState.phase === 'NIGHT_FALL' ||
-              publicState.phase === 'NIGHT_KILLER' ||
-              publicState.phase === 'NIGHT_DETECTIVE') && (
+              publicState.phase === 'NIGHT_KILLER') && (
               <TvNightFall state={publicState} onAdvance={advancePhase} />
             )}
 
